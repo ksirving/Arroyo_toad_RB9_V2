@@ -20,7 +20,7 @@ setwd("/Users/katieirving/Documents/Documents - Katie’s MacBook Pro/git/Arroyo
 getwd()
 
 # raw env data ------------------------------------------------------------
-path <- "ignore/FullData/"
+path <- "original_model/FullData/"
 
 ## raw data - env vars with presence absence
 data <- read.csv(paste0(path, "200mCells_FullData_PresAbs_Complete_ThinnedCols.csv"))
@@ -93,7 +93,7 @@ getwd()
 
 setwd("/Users/katieirving/Documents/Documents - Katie’s MacBook Pro/git/Arroyo_toad_RB9")
 ## read in stack created in 00
-xvars <- stack("output_data/ignore2/00_raw_data_raster.grd") ## original raster @ 200m - change as needed
+xvars <- stack("ignore/00_raw_data_raster.grd") ## original raster @ 200m - change as needed
 xvars <- xvars[[2:97]] ## remove template raster
 
 # KDE Bias Surface --------------------------------------------------------
@@ -167,10 +167,10 @@ object.size(data1)
 
 
 ## save as object
-save(data2, file= "output_data/ignore2/00_all_env_bio_data.RData") ## env data
-save(data1, file= "output_data/ignore2/00_pseudo_abs.RData") ## pseudo_abs
+save(data2, file= "ignore/00_all_env_bio_data.RData") ## env data
+save(data1, file= "ignore/00_pseudo_abs.RData") ## pseudo_abs
 
-load(file= "output_data/ignore2/00_all_env_bio_data.RData")
+load(file= "ignore/00_all_env_bio_data.RData")
 ## make spatial
 
 data_sf<- data2 %>%
@@ -197,11 +197,11 @@ head(data_sf)
 
 ## save as shape
 
-st_write(data_sf, "output_data/ignore2/00_all_env_bio_data.shp", append=FALSE) ## not working??
+st_write(data_sf, "ignore/00_all_env_bio_data.shp", append=FALSE) ## not working??
 # 
 # check <- st_read("output_data/00_all_env_bio_data.shp")
 # plot(check)()
-data_sf<- st_read("output_data/ignore2/00_all_env_bio_data.shp")
+data_sf<- st_read("ignore/00_all_env_bio_data.shp")
 data_sf
 dim(data_sf)
 class(data_sf)
@@ -215,7 +215,7 @@ class(data_sf)
 #             Minvals = min(Value),
 #             Maxvals = max(Value))
 #   
-#   save(data_hyd_sf_long, file="output_data/ignore2/00_all_env_data_scaled.RData")
+#   save(data_hyd_sf_long, file="ignore/00_all_env_data_scaled.RData")
 #   head(data_hyd_sf_long)
 #   rm(data_hyd_sf_long)
 #   
@@ -288,7 +288,7 @@ x2[[i]]
 plot(x[[2]]) ## to check
 x
 ## save out
-writeRaster(x, "output_data/ignore2/00_raw_data_raster.grd", format="raster", crs="+proj=utm +zone=11 +datum=WGS84", overwrite=TRUE)
+writeRaster(x, "ignore/00_raw_data_raster.grd", format="raster", crs="+proj=utm +zone=11 +datum=WGS84", overwrite=TRUE)
 
 
 # add hydro ---------------------------------------------------------------
@@ -372,7 +372,7 @@ data_hyd_sf_long <- data_hyd_sf %>%
               Minvals = min(Value),
               Maxvals = max(Value))
 
-    # save(data_hyd_sf_long, file="output_data/ignore2/00_all_env_data_scaled.RData")
+    # save(data_hyd_sf_long, file="ignore/00_all_env_data_scaled.RData")
     head(data_hyd_sf_long)
     rm(data_hyd_sf_long)
    
@@ -417,14 +417,14 @@ data_hyd_sf_long <- data_hyd_sf %>%
   
   ## save out
   
-  save(all_data, file = "output_data/ignore2/00_all_env_bio_data_NHD_reach.RData")
+  save(all_data, file = "ignore/00_all_env_bio_data_NHD_reach.RData")
 
 # Raster stuff ------------------------------------------------------------
 
 
 ### extract other physical info
 
-varR <- raster("output_data/ignore2/00_raw_data_raster.grd")
+varR <- raster("ignore/00_raw_data_raster.grd")
 varR
 
 ?extract
@@ -464,6 +464,6 @@ x
 
 
 ## save out
-writeRaster(x, "output_data/ignore2/00_raw_data_raster.grd", format="raster", crs="+proj=utm +zone=11 +datum=WGS84", overwrite=TRUE)
+writeRaster(x, "ignore/00_raw_data_raster.grd", format="raster", crs="+proj=utm +zone=11 +datum=WGS84", overwrite=TRUE)
 
 

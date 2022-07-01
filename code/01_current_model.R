@@ -30,7 +30,7 @@ library(mapview)
 
 setwd("/Users/katieirving/Documents/Documents - Katie’s MacBook Pro/git/Arroyo_toad_RB9")
 
-wsdir="ignore/Current/randomForests"
+wsdir="original_model/Current/randomForests"
 
 ## define and set path
 path=paste0(wsdir, "/PARTITIONING/DATA3") 
@@ -72,7 +72,7 @@ getwd()
 
 setwd("/Users/katieirving/Documents/Documents - Katie’s MacBook Pro/git/Arroyo_toad_RB9")
 ## read in stack created in 00
-xvars <- stack("output_data/ignore2/00_raw_data_raster.grd")
+xvars <- stack("ignore/00_raw_data_raster.grd")
 xvars <- xvars[[2:97]] ## remove template raster
 
 # KDE Bias Surface --------------------------------------------------------
@@ -119,7 +119,7 @@ sdata<-rbind(sdata,a.spdf)
 ## this is a quick fix for now, will need to be fixed
 
 ## bio comids
-load(file= "output_data/ignore2/00_pseudo_abs.RData") ## data1
+load(file= "ignore/00_pseudo_abs.RData") ## data1
 head(data1)
 
 ## make spatial
@@ -138,7 +138,7 @@ data1a
 
 ## join presence/absence to env df
 
-load(file = "output_data/ignore2/00_all_env_bio_data_NHD_reach.RData") ## all_data
+load(file = "ignore/00_all_env_bio_data_NHD_reach.RData") ## all_data
 head(all_data)
 names(all_data2)
 
