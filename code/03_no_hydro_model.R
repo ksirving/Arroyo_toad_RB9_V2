@@ -1,21 +1,7 @@
-InstallPkgs <- function(pkgs) {
-  pkgs_miss <- pkgs[which(!pkgs %in% installed.packages()[, 1])]
-  if (length(pkgs_miss) > 0) {
-    install.packages(pkgs_miss, dep=TRUE, repos="http://cran.us.r-project.org")
-  }  
-  pkgs_miss <- pkgs[which(!pkgs %in% installed.packages()[, 1])]
-  if (length(pkgs_miss) > 0) {
-    install.packages(pkgs_miss, dep=TRUE, repos="http://cran.us.r-project.org")
-  }
-  attached <- search()
-  attached_pkgs <- attached[grepl("package", attached)]
-  need_to_attach <- pkgs[which(!pkgs %in% gsub("package:", "", attached_pkgs))]
-  if (length(need_to_attach) > 0) {
-    for (i in 1:length(need_to_attach)) require(need_to_attach[i], character.only = TRUE)
-  }
-}
-InstallPkgs(c("sp","rgdal","raster","randomForest","kernlab","rgl","ks"))
-#Normally need to install these packages,"rgl","ks"
+## model with no hydro
+
+## random forest - full model
+
 library(sp)
 library(rgdal)
 library(raster)
@@ -30,150 +16,38 @@ library(mapview)
 
 setwd("/Users/katieirving/Documents/Documents - Katie’s MacBook Pro/git/Arroyo_toad_RB9_V2")
 
-wsdir="original_model/Current/randomForests"
+## upload data
 
-## define and set path
-path=paste0(wsdir, "/PARTITIONING/DATA3") 
-setwd(path)
+load(file =  "ignore/00a_data_for_model.RData") # NewDataObsSub - for model build
+load(file =  "ignore/00a_data_for_prediction.RData") #NewDataObs - for prediction
+
+NewDataObs <- NewDataObs %>%
+  as.data.frame() %>%
+  dplyr::select(-geometry)
 
 ## get path for functions
-source("Functions.R")
-
-# Bio data ----------------------------------------------------------------
-getwd()
-
-## define and set path
-path=paste0(wsdir, "/PARTITIONING/DATA3") 
-setwd(path)
-
-
-
-# Training data
-inshape="200mCells_PresAbs2005 PCA PresAbs Pts_MLT.shp" ## presence absence
-
-# NUMBER OF BOOTSTRAP REPLICATES
-b=10001
-
-# READ SPECIES OBSERVATION DATA 
-
-orig.sdata<- sdata <- shapefile(inshape) ## p/a
-# str(sdata@data)
-proj4string(sdata)<-CRS("+proj=utm +zone=11 +datum=WGS84")
-proj4string(orig.sdata)<-CRS("+proj=utm +zone=11 +datum=WGS84")
-orig.sdata
-#sdata <- sdata[1]
-# str(sdata)
-proj4string(sdata)<-CRS("+proj=utm +zone=11 +datum=WGS84")
-
-head(sdata)
-
-# Physical data -----------------------------------------------------------
-getwd()
-
-setwd("/Users/katieirving/Documents/Documents - Katie’s MacBook Pro/git/Arroyo_toad_RB9_V2")
-## read in stack created in 00
-xvars <- stack("ignore/00_raw_data_raster.grd")
-xvars <- xvars[[2:97]] ## remove template raster
-
-# KDE Bias Surface --------------------------------------------------------
-set.seed(234)
-
-# develop KDE sampling bias surface
-orig.sdata2<-subset(orig.sdata, PresAbs200==1)
-
-mask <- xvars[[1]]>-1000
-
-bias <- cellFromXY(mask, orig.sdata[,-1])
-
-cells <- unique(sort(bias))
-
-kernelXY <- xyFromCell(mask, cells)
-samps <- as.numeric(table(bias))
-
-length(samps)
-
-# code to make KDE raster
-KDEsur <- sm.density(kernelXY, weights=samps, display="none", ngrid=880, 
-                     ylim=c(3600402,3730202), xlim=c(423638,563638), nbins=0)
-KDErast=SpatialPoints(expand.grid(x=KDEsur$eval.points[,1], y=KDEsur$eval.points[,2]))
-KDErast = SpatialPixelsDataFrame(KDErast, data.frame(kde = array(KDEsur$estimate, 
-                                                                 length(KDEsur$estimate))))
-KDErast <- raster(KDErast)
-KDErast <- resample(KDErast, mask)
-KDErast <- KDErast*mask
-KDEpts <- rasterToPoints(KDErast) #(Potential) PseudoAbsences are created here 
-
-#Now to integrate Pseudoabsences into Presence Data
-a=KDEpts[sample(seq(1:nrow(KDEpts)), size=702, replace=T, prob=KDEpts[,"layer"]),1:2] 
-
-PA.abs<-data.frame(PresAbs200=rep(0,nrow(a)))
-head(PA.abs)
-a.sp<-SpatialPoints(a, proj4string=CRS("+proj=utm +zone=11 +datum=WGS84"))
-a.spdf<-SpatialPointsDataFrame(a.sp, PA.abs)
-
-sdata<-rbind(sdata,a.spdf)
-
-
-# Join to scaled data -----------------------------------------------------
-
-## this is a quick fix for now, will need to be fixed
-
-## bio comids
-load(file= "ignore/00_pseudo_abs.RData") ## data1
-head(data1)
-
-## make spatial
-data1 <- data1 %>%
-  st_as_sf(coords=c("X", "Y"), crs=32611, remove=F) %>%
-  dplyr::select(-ID)
-
-## make sure if reach has at least one presence then keeps it, if none then absence
-data1a <- data1 %>%
-  as.data.frame() %>%
-  group_by(COMID) %>% 
-  summarise(PresAbs200 = max(PresAbs200))
-  
-data1a
-
-
-## join presence/absence to env df
-
-load(file = "ignore/00_all_env_bio_data_NHD_reach.RData") ## all_data
-head(all_data)
-names(all_data2)
-
-## join all data with all data with pres/absence
-all_data2 <- full_join(all_data, data1a, by = "COMID") %>% ### doesn't match all comids - fix!
-  mutate(PresAbs200 = as.numeric(PresAbs200)) %>%
-  mutate(PresAbs200 = replace_na(PresAbs200, -999))
-
-
-all_data_obs  <- right_join(all_data, data1a, by = "COMID")
-sum(is.na(all_data_obs))
-
-all_data_obs <- na.omit(all_data_obs) ### fix this issue!!! 
-names(all_data_obs)
-
-save(all_data_obs, file = "ignore/01_all_env_bio_data_NHD_reach_original.RData")
-
-dim(all_data_obs)
+source("original_model/Current/randomForests/PARTITIONING/DATA3/Functions.R")
 
 # Join observations and mulitcolinearlity -------------------------------------------------------
 
-# FETCH RASTER VALUES FOR X VARABLES AND JOIN TO SPECIES OBSERVATION DATA (Assigns raster values to points)
-# sum(is.na(all_data_obs))
-# 
-# which(is.na(all_data_obs))
-# 
-# all_data_obs[1672:1702,100:105]
+## remove climate vars
+all_data_obs <- NewDataObsSub %>%
+  select(-c(DS_Mag_50:Wet_BFL_Mag_10)) %>%
+  drop_na()
 
-cl <- MultiColinear(all_data_obs[,2:101], p=0.05)
-xdata <- all_data_obs[,2:101]
+sum(is.na(all_data_obs))
+dim(all_data_obs)
+names(all_data_obs)
+
+
+cl <- MultiColinear(all_data_obs[,c(2:40, 42:98)], p=0.05)
+xdata <- all_data_obs[,c(2:40, 42:98)]
+xdata
 
 for(l in cl) {
-cl.test <- xdata[,-which(names(xdata)==l)]
-print(paste("REMOVE VARIABLE", l, sep=": "))
-MultiColinear(cl.test, p=0.05)
+  cl.test <- xdata[,-which(names(xdata)==l)]
+  print(paste("REMOVE VARIABLE", l, sep=": "))
+  MultiColinear(cl.test, p=0.05)
 }
 
 l
@@ -184,16 +58,19 @@ for(l in cl) { all_data_obs <- all_data_obs[,-which(names(all_data_obs)==l)] }
 
 names(all_data_obs)
 
-# Random forest model -----------------------------------------------------
 
-ydata <- as.factor(all_data_obs$PresAbs200)
-xdata <- all_data_obs[,2:59] ## do not include template layer
+# Random forest model -----------------------------------------------------
+# NUMBER OF BOOTSTRAP REPLICATES
+b=10001
+
+ydata <- as.factor(all_data_obs$NewObs)
+xdata <- all_data_obs[,c(2:13, 15:55)]## do not include template layer
 
 class(ydata)
 length(ydata)
 
 # PERCENT OF PRESENCE OBSERVATIONS
-( dim(all_data_obs[all_data_obs$PresAbs200 == 1, ])[1] / dim(all_data_obs)[1] ) * 100 ## 48%
+( dim(all_data_obs[all_data_obs$NewObs == 1, ])[1] / dim(all_data_obs)[1] ) * 100 ## 55%
 
 # RUN RANDOM FORESTS MODEL SELECTION FUNCTION
 #Also provides variable importance and such
@@ -204,11 +81,11 @@ length(ydata)
 # CREATE NEW XDATA BASED ON SELECTED MODEL AND RUN FINAL RF MODEL (Model 4)
 #RF runs differently when you use symbolis languate (using ~ as in an Lin. Model... use the indexing approacy [y=rf.data[,1]...]
 
-sel.vars <- rf.model$PARAMETERS[[3]]# set to use 3 - lowest error rate and has all hydro vars
+sel.vars <- rf.model$PARAMETERS[[3]]# try all
 
 rf.data <- data.frame(y=ydata, xdata[,sel.vars])	
 
-(rf.final <- randomForest(y=rf.data[,1], x=rf.data[,2:ncol(rf.data)], ntree=b, nodesize=5,
+(rf.final <- randomForest(y=rf.data[,1], x=rf.data[,2:ncol(rf.data)], ntree=b, mtry = 4,nodesize=5,
                           importance=TRUE, norm.votes=TRUE, proximity=TRUE) )
 names(rf.data )
 
@@ -218,25 +95,27 @@ setsize <- floor(nrow(rf.data)*0.8)
 index <- sample(1:nrow(rf.data), size = setsize)
 training <- rf.data[index,]
 testing <- rf.data[-index,]
-
-(rf.train <- randomForest(y=training[,1], x=training[,2:ncol(training)], ntree=b, nodesize=5,
+names(testing)
+(rf.train <- randomForest(y=training[,1], x=training[,2:ncol(training)], ntree=b,  nodesize=5,
                           importance=TRUE, norm.votes=TRUE, proximity=TRUE) )
 
 plot(rf.train)
-
+?randomForest
 dim(testing)
+testing
 
-result <- as.data.frame( predict(rf.train, testing[, 2:16], type = "response"))
+result <- as.data.frame(predict(rf.train, testing[,c(2:44)], type = "response"))
 result$y <- testing$y
 
-plot(result)
 
+plot(result)
+View(result)
 
 ### visualise trees
 
 library(rpart)
 
-pdf("/Users/katieirving/Documents/Documents - Katie’s MacBook Pro/git/Arroyo_toad_RB9/Figures/01_Trees.pdf", width=25, height=15)
+pdf("/Users/katieirving/Documents/Documents - Katie’s MacBook Pro/git/Arroyo_toad_RB9_V2/Figures/01_Trees_no_hydro.pdf", width=25, height=15)
 
 full_tree <- rpart(y~., method = "class", control = rpart.control(cp = 0, minsplit = 2), data = rf.data)
 plot(full_tree)
@@ -263,6 +142,7 @@ ggplot(data=oob.error.data, aes(x=Trees, y=Error)) +
 ## check split
 
 oob.values <- vector(length=10)
+oob.values
 
 for(i in 1:10) {
   temp.model <- randomForest(y~., data=rf.data, mtry = i, ntree=b)
@@ -299,8 +179,9 @@ m1 <- ggplot(data = mdsData, aes(x=X, y=Y)) +
   xlab(paste("MDS1 - ", mdsVarPer[1], "%", sep=" ")) +
   ylab(paste("MDS2 - ", mdsVarPer[2], "%", sep=" ")) +
   ggtitle(paste("Pres/Abs", "PROXIMITY MATRIX", sep=" - "))
+m1
 
-file.name1 <- "/Users/katieirving/Documents/Documents - Katie’s MacBook Pro/git/Arroyo_toad_RB9/Figures/01_full_model_mds_scale.jpg"
+file.name1 <- "/Users/katieirving/Documents/Documents - Katie’s MacBook Pro/git/Arroyo_toad_RB9/Figures/01_full_model_mds_scale_no_hydro.jpg"
 ggsave(m1, filename=file.name1, dpi=300, height=5, width=6)
 
 
@@ -333,16 +214,18 @@ points(rf.p[,v1], rf.p[,v2], pch=21, cex=2.5, bg=c("blue", "red"))
 
 library(ROCR)
 
-all_data_obs <- all_data_obs %>% mutate(PresAbs200 = as.factor(PresAbs200))
-
+all_data_obs <- all_data_obs %>% mutate(NewObs = as.factor(NewObs))
+names(all_data_obs)
+sel.vars
+# all_data_obs  <- all_data_obs[,sel.vars]
 #Index refers to the right column of probabilities - in this model the second column, which is probs of "1"
 
-pred1 <- predict(rf.final, all_data_obs,filename="output_data/Current/Model1/SppProbs.img", type="prob",  index=2, 
-        na.rm=TRUE, overwrite=TRUE, progress="window")
+pred1 <- predict(rf.final, all_data_obs, filename="output_data/Current/Model1/SppProbs_no_hydro.img", type="prob",  index=2, 
+                 na.rm=TRUE, overwrite=TRUE, progress="window")
 
 pred1
 
-pred2 = prediction(pred1[,2], all_data_obs$PresAbs200)
+pred2 = prediction(pred1[,2], all_data_obs$NewObs)
 pred2
 
 # # 1. Area under curve
@@ -378,24 +261,32 @@ rf.final$pred[order(model_rf$pred$rowIndex),2]
 # Predict on all rb9 region-------------------------------------------------------
 
 #Index refers to the right column of probabilities - in this model the second column, which is probs of "1"
-all_data <- na.omit(all_data) ## fix this issue!!!
+all_data <- na.omit(NewDataObs)
+all_data <- all_data[,c("COMID", sel.vars)] 
+head(all_data)
+str(all_data)
 
-pred <- predict(rf.final, all_data,filename="output_data/Current/Model1/SppProbs.img", type="prob",  index=2, 
-                              na.rm=TRUE, overwrite=TRUE, progress="window")
+pred <- predict(rf.final, all_data,filename="output_data/Current/Model1/SppProbs_no_hydro.img", type="prob",  index=2, 
+                na.rm=TRUE, overwrite=TRUE, progress="window")
 
 
-pred_df <- as.data.frame(predict(rf.final, all_data,filename="output_data/Current/Model1/SppProbs.img", type="prob",  index=2, 
-                              na.rm=TRUE, overwrite=TRUE, progress="window"))
+pred_df <- as.data.frame(predict(rf.final, all_data,filename="output_data/Current/Model1/SppProbs_no_hydro.img", type="prob",  index=2, 
+                                 na.rm=TRUE, overwrite=TRUE, progress="window"))
 ## add comids
 pred_df$COMID <- all_data$COMID
 
+pred_df
 
+pred_env <- pred_df %>%
+  full_join(all_data, by = "COMID") %>%
+  rename(probOcc = 2)
+
+head(pred_env)
 
 # partial dependence plots ------------------------------------------------
 
-path
 sp=0.6
-pdf("/Users/katieirving/Documents/Documents - Katie’s MacBook Pro/git/Arroyo_toad_RB9/Figures/PartialPlots_6.pdf", width=8, height=8)
+pdf("/Users/katieirving/Documents/Documents - Katie’s MacBook Pro/git/Arroyo_toad_RB9_V2/Figures/PartialPlots_6_no_hydro.pdf", width=8, height=8)
 p <- as.matrix(rf.final$importance)    
 ord <- rev(order(p[,1], decreasing=TRUE)[1:dim(p)[1]])  
 dotchart(p[ord,1], main="Scaled Variable Importance", pch=19)
@@ -436,14 +327,16 @@ dev.off()
 # Plotting probability of occurrence --------------------------------------
 
 nhd <- st_read("/Users/katieirving/Documents/Documents - Katie’s MacBook Pro/git/Cannabis_Eflows/ignore/NHDPlus_V2_Flowline_CA.shp")
-head(pred)
+head(pred_df)
 
 head(nhd)
 
 names(all_data)
 
 obs <- all_data_obs %>%
-  dplyr::select(COMID, PresAbs200)
+  dplyr::select(COMID, NewObs)
+
+obs
 
 nhd_lines_rb9 <- nhd %>%
   dplyr::select(Shape_Leng, COMID) %>%
@@ -466,24 +359,31 @@ nhd_lines_prob <- nhd_lines_prob %>%
 
 ## join in obs
 
-nhd_lines_prob <- full_join(nhd_lines_prob, obs, by = "COMID")
+nhd_lines_obs <- right_join(nhd_lines_rb9, obs, by = "COMID")
+nhd_lines_obs <- st_zm(nhd_lines_obs) %>% mutate(nhd_lines_obs, NewObs = as.factor(NewObs)) %>%
+  drop_na(Shape_Leng) %>% st_centroid()
 
+nhd_lines_obs
 nhd_lines_prob
 
 library(viridis)
+
+
 map1 <- ggplot() +
   geom_sf(data = nhd_lines_prob, aes(color = probOcc)) + 
-  geom_sf(data = subset(data1, PresAbs200 == 1)) +
-  scale_fill_gradientn(colours=rev(magma(6))) ## colours not working
+  geom_sf(data = subset(nhd_lines_obs, NewObs == 1)) 
+# scale_fill_gradientn(colours=rev(magma(6))) ## colours not working
 
 map1
 
-file.name1 <- "/Users/katieirving/Documents/Documents - Katie’s MacBook Pro/git/Arroyo_toad_RB9/Figures/01_full_model_prob_occs_map.jpg"
+file.name1 <- "/Users/katieirving/Documents/Documents - Katie’s MacBook Pro/git/Arroyo_toad_RB9/Figures/01_full_model_prob_occs_map_no_hydro.jpg"
 ggsave(map1, filename=file.name1, dpi=300, height=5, width=6)
 
 library(mapview)
 library(sf)
 library(RColorBrewer)
+webshot::install_phantomjs()
+
 ## map
 # set background basemaps:
 basemapsList <- c("Esri.WorldTopoMap", "Esri.WorldImagery",
@@ -491,13 +391,56 @@ basemapsList <- c("Esri.WorldTopoMap", "Esri.WorldImagery",
                   "OpenTopoMap", "OpenStreetMap", 
                   "CartoDB.Positron", "Stamen.TopOSMFeatures")
 
-mapviewOptions(basemaps=basemapsList, fgb = FALSE)
+mapviewOptions(basemaps=basemapsList, vector.palette = colorRampPalette(c(  "red", "green")) , fgb = FALSE)
 
 
-m1 <- mapview(nhd_lines_prob, zcol = "probRound", col.regions=brewer.pal(11, "YlGn"))
+m1 <- mapview(nhd_lines_prob, zcol = "probOcc",  legend = TRUE, layer.name = "Probability of Occurrence") +
+  mapview(subset(nhd_lines_obs, NewObs == 1), col.regions = "black",cex = 2, layer.name = "Observations")
 
 m1@map %>% leaflet::addMeasure(primaryLengthUnit = "meters")
 
+mapshot(m1, url = paste0(getwd(), "/map_no_hydro.html"),
+        file = paste0(getwd(), "/map_no_hydro.png"))
+getwd()
+
+
+
+# Checking hydro data -----------------------------------------------------
+
+## the hydro curves aren't polynomial over zero delta, why?
+
+
+head(pred_env)
+
+## check predictions, prob of occurece
+pred_ev <- pred_env %>%
+  dplyr::select(probOcc, DS_Mag_50:Wet_BFL_Mag_10) %>%
+  pivot_longer(DS_Mag_50:Wet_BFL_Mag_10, names_to = "FFM", values_to = "Value")
+
+head(pred_ev)
+
+ggplot(data = pred_ev, aes(y=probOcc, x=Value)) +
+  geom_point() +
+  geom_smooth(method = "loess") +
+  facet_wrap(~FFM, scales="free_x")
+
+?geom_smooth
+
+plot(pred_ev$DS_Mag_50, pred_ev$probOcc)
+
+## check known occurrences
+
+orgi_dat_wide <- NewDataObsSub %>%
+  dplyr::select(NewObs, DS_Mag_50:Wet_BFL_Mag_10)
+
+orgi_dat <- NewDataObsSub %>%
+  dplyr::select(NewObs, DS_Mag_50:Wet_BFL_Mag_10) %>%
+  pivot_longer(DS_Mag_50:Wet_BFL_Mag_10, names_to = "FFM", values_to = "Value")
+
+ggplot(data = orgi_dat, aes(y=NewObs, x=Value)) +
+  geom_point() +
+  geom_smooth( method = glm) +
+  facet_wrap(~FFM, scales="free_x")
 
 ##################################################
 # PROXIMITY MULTIDIMENSIONAL SCALING (MDS) PLOTS #

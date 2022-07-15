@@ -16,7 +16,7 @@ library(readr)
 library(mapview)
 
 
-setwd("/Users/katieirving/Documents/Documents - Katie’s MacBook Pro/git/Arroyo_toad_RB9")
+setwd("/Users/katieirving/Documents/Documents - Katie’s MacBook Pro/git/Arroyo_toad_RB9_V2")
 getwd()
 
 # raw env data ------------------------------------------------------------
@@ -91,7 +91,7 @@ head(sdata)
 # Physical data -----------------------------------------------------------
 getwd()
 
-setwd("/Users/katieirving/Documents/Documents - Katie’s MacBook Pro/git/Arroyo_toad_RB9")
+setwd("/Users/katieirving/Documents/Documents - Katie’s MacBook Pro/git/Arroyo_toad_RB9_V2")
 ## read in stack created in 00
 xvars <- stack("ignore/00_raw_data_raster.grd") ## original raster @ 200m - change as needed
 xvars <- xvars[[2:97]] ## remove template raster
