@@ -405,8 +405,8 @@ m1 <- mapview(nhd_lines_prob, zcol = "probOcc",  legend = TRUE, layer.name = "Pr
 
 m1@map %>% leaflet::addMeasure(primaryLengthUnit = "meters")
 
-mapshot(m1, url = paste0(getwd(), "/map.html"),
-        file = paste0(getwd(), "/map.png"))
+mapshot(m1, url = paste0(getwd(), "/ignore/map.html"),
+        file = paste0(getwd(), "/ignore/map.png"))
 getwd()
 
 
