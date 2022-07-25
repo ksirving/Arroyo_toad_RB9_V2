@@ -8,6 +8,7 @@ library(raster)
 library(nhdplusTools)
 library(readr)
 library(mapview)
+library(RStoolbox)
 
 
 setwd("/Users/katieirving/Documents/Documents - Katie’s MacBook Pro/git/Arroyo_toad_RB9_V2")
@@ -24,7 +25,7 @@ head(all_data)
 # str(data$ID.2)
 
 
-# New observation data ----------------------------------------------------
+# USGS observation data ----------------------------------------------------
 
 bio <- read.csv("input_data/SCCWRP_BUMI_20220624.csv")
 head(bio)
@@ -38,7 +39,7 @@ bio <- bio[-c(1562:1565),] ## remove rows with no date
 bio_sub <- bio %>% 
   filter(!is.na(StartLat), !is.na(StartLong)) %>%
   separate(Date1, into = c("Month", "Day", "Year", "Time"), remove = F, sep=" |/") %>% 
-  filter(!Year > 2014) %>%
+  filter(!Year > 14) %>%
   st_as_sf(coords=c( "StartLong", "StartLat"), crs=4326, remove=F) %>%
   mutate(ID = 1:length(geometry)) %>%
   mutate(ID = paste0("B", ID)) 
@@ -46,6 +47,7 @@ bio_sub <- bio %>%
 dim(bio_sub)
   
 head(bio_sub)
+range(bio_sub$Year)
 
 
 ## look at sites
@@ -60,11 +62,49 @@ mapviewOptions(basemaps=basemapsList, fgb = FALSE)
 
 ## plot points
 m1 <- mapview(bio_sub, cex=6, col.regions="orange",
-              layer.name="Toad Observations") 
+              layer.name="Toad Observations USGS") +
+  mapview(bio1_sub, cex=6, col.regions="blue",
+          layer.name="Toad Observations Other")  
 
 
 m1
 m1@map %>% leaflet::addMeasure(primaryLengthUnit = "meters")
+
+
+# More observations data --------------------------------------------------
+
+bio1 <- read.csv("input_data/arroyo_toad_SDRB9_occurrence_historicaldata_othersources.csv")
+bio2 <- read.csv("input_data/SDRB9_arroyo_toad_CarlsbadFWO_1991_2020.csv")
+
+## remove rows with no coords
+## take only years between 1990 -  2014
+## make dummy ID variable
+
+bio1 <- bio1[-c(208:218),] ## remove rows with no date
+bio1_sub
+
+bio1_sub <- bio1 %>% 
+  filter(!is.na(Latitude), !is.na(Longitude)) %>%
+  separate(EventDate, into = c("Month", "Day", "Year"), remove = F, sep="/") %>% 
+  filter(Year %in% 1990:2014) %>%
+  # dplyr::select(Latitude:Longitude)
+  st_as_sf(coords=c("Longitude", "Latitude"), crs=4326, remove=F) %>%
+  mutate(ID = 1:length(geometry)) %>%
+  mutate(ID = paste0("H", ID)) 
+
+str(bio_sub)
+
+
+bio2 #<- bio1[-c(208:218),] ## remove rows with no date
+bio1_sub
+bio1_sub <- bio1 %>% 
+  filter(!is.na(Latitude), !is.na(Longitude)) %>%
+  separate(EventDate, into = c("Month", "Day", "Year"), remove = F, sep="/") %>% 
+  filter(Year %in% 1990:2014) %>%
+  # dplyr::select(Latitude:Longitude)
+  st_as_sf(coords=c( "Latitude", "Longitude"), crs=4326, remove=F) %>%
+  mutate(ID = 1:length(geometry)) %>%
+  mutate(ID = paste0("H", ID)) 
 
 # get COMIDs --------------------------------------------------------------
 
@@ -73,6 +113,49 @@ data_segs <- bio_sub %>%
   dplyr::select(ID, StartLat, StartLong) %>%
   distinct(ID, StartLat, StartLong) %>% 
   st_as_sf(coords=c("StartLong", "StartLat"), crs=4326, remove=F) %>%
+  st_transform(crs=32611) %>%
+  arrange(ID)
+
+crs(data_segs)
+head(data_segs)
+dim(data_segs)
+
+# use nhdtools to get comids
+data_all_coms <- data_segs %>%
+  group_split(ID) %>%
+  set_names(., data_segs$ID) %>%
+  map(~discover_nhdplus_id(.x$geometry))
+
+data_all_coms
+
+# flatten into single dataframe instead of list
+data_segs_df <-data_all_coms %>% flatten_dfc() %>% t() %>%
+  as.data.frame() %>%
+  rename("COMID"=V1) %>% rownames_to_column(var = "ID") 
+
+head(data_segs_df)
+
+bio_data2 <- full_join(bio_sub, data_segs_df, by = "ID")
+object.size(bio_data2)
+
+length(unique(bio_data2$COMID)) ## 214
+
+
+save(bio_data2, file = "ignore/00a_al_bio_data_COMIDs.RData")
+load(file = "ignore/00a_al_bio_data_COMIDs.RData") # bio_data2
+
+## other obs
+
+crs(nhd_lines_rb9)
+bio1_sub <- st_transform(bio1_sub, crs = 4269)
+
+bio1_sub_rb9 <- st_intersects(bio1_sub, nhd_lines_rb9) ## nothing matches, try again later!!!
+
+# Create dataframe for looking up COMIDS (here use all stations)
+data_segs <- bio1_sub %>%
+  dplyr::select(ID, Latitude, Longitude) %>%
+  distinct(ID, Latitude, Longitude) %>% 
+  st_as_sf(coords=c( "Latitude", "Longitude"), crs=4326, remove=F) %>%
   st_transform(crs=32611) %>%
   arrange(ID)
 
@@ -308,15 +391,19 @@ TmaxData <- full_join(TmaxAnn_join, TmaxMon_join, by = "COMID")
  
 # plot comids -------------------------------------------------------------
 
-  nhd <- st_read("/Users/katieirving/Documents/Documents - Katie’s MacBook Pro/git/Cannabis_Eflows/ignore/NHDPlus_V2_Flowline_CA.shp")
-
+  nhd <- st_read("/Users/katieirving/SCCWRP/SD Hydro Vulnerability Assessment - General/Data/SpatialData/NHDplus_RB9.shp")
+  # nhd <- st_read("/Users/katieirving/SCCWRP/SD Hydro Vulnerability Assessment - General/Data/SpatialData/SD_RB9_boundary.shp")
+  
+  
   obs <- DataObs %>%
     dplyr::select(COMID)
   
   nhd_lines_rb9 <- nhd %>%
-    dplyr::select(Shape_Leng, COMID) %>%
-    filter(COMID %in% all_data$COMID) %>% ## suset to orginial data with RB9 extent
+    dplyr::select(SHAPE_LENG, COMID) %>%
+    filter(COMID %in% all_data$COMID) %>% ## subset to orginial data with RB9 extent
     mutate(COMID = as.integer(COMID))
+  
+
   
   nhd_lines_rb9
 
@@ -338,13 +425,13 @@ TmaxData <- full_join(TmaxAnn_join, TmaxMon_join, by = "COMID")
   
   library(viridis)
   map1 <- ggplot() +
-    geom_sf(data = nhd_lines_rb9)  +
+    geom_sf(data = nhd_lines_rb9) # +
     geom_sf(data = nhd_lines_obs, aes(colour = NewObs))
     # scale_fill_gradientn(colours=rev(magma(6))) ## colours not working
   
   map1
   
-  # file.name1 <- "/Users/katieirving/Documents/Documents - Katie’s MacBook Pro/git/Arroyo_toad_RB9/Figures/01_full_model_prob_occs_map.jpg"
+  file.name1 <- "/Users/katieirving/Documents/Documents - Katie’s MacBook Pro/git/Arroyo_toad_RB9_V2/Figures/01_rb9_map.jpg"
   # ggsave(map1, filename=file.name1, dpi=300, height=5, width=6)
   
 
@@ -377,10 +464,98 @@ NewDataObsSub <- NewDataObs %>%
 length(unique(NewDataObsSub$COMID)) ## occurrence comids 357
 length(unique(NewDataObs$COMID)) ## 2116
 
-
 # Save out ----------------------------------------------------------------
 
 class(NewDataObsSub)
 
 save(NewDataObsSub, file =  "ignore/00a_data_for_model.RData")
 save(NewDataObs, file =  "ignore/00a_data_for_prediction.RData")
+
+# Remote Sensing data -----------------------------------------------------
+
+## upload dry season data
+
+sept <- brick("/Users/katieirving/Documents/Documents - Katie’s MacBook Pro/git/Arroyo_toad_RB9_V2/ignore/TC_2014_RB9/TC_092014_RB9.tif")
+# plot(sept)
+sept
+# install.packages("RStoolbox")
+
+## convert rb9 comids to points
+nhd_points_rb9 <- st_cast(nhd_lines_rb9, "POINT") %>% dplyr::select(-SHAPE_LENG) %>% st_zm()
+head(nhd_points_rb9)
+
+## extract raster values
+sept_values <- extract(sept, nhd_points_rb9)
+# head(sept_values_coord)
+sept_values_coord <- cbind(sept_values[,1:3], nhd_points_rb9)
+
+
+## upload wet season data
+april <- brick("/Users/katieirving/Documents/Documents - Katie’s MacBook Pro/git/Arroyo_toad_RB9_V2/ignore/TC_2014_RB9/TC_042014_RB9.tif")
+# plot(april)
+
+## extract raster values
+apr_values <- extract(april, nhd_points_rb9)
+# head(apr_values)
+
+## join with sept values
+tass_sp <- cbind(apr_values[,1:3], sept_values_coord)
+head(tass_sp)
+dim(tass_sp)
+
+save(tass_sp, file = "ignore/00a_tass_cap_all_sp.RData")
+
+#### summarise by comid - mean and variance
+
+## make longer and group by comid and variable
+
+tass_sp_long <- tass_sp %>%
+  pivot_longer(TC_042014_RB9.1:TC_092014_RB9.3, names_to = "Variable", values_to = "Value") %>%
+  group_by(COMID, Variable) %>% 
+  summarise(MeanVals = mean(Value), VarVals = var(Value)) ## calculations
+
+## make wider rename with mean/var in name
+
+## means
+tass_sp_means <- tass_sp_long %>%
+  mutate(VarNames = paste0(Variable, "_Var"), Variable = paste0(Variable, "_Mean")) %>%
+  pivot_wider(id_cols = "COMID", names_from = Variable, values_from = MeanVals) 
+
+## variance
+tass_sp_vars <- tass_sp_long %>%
+    mutate(VarNames = paste0(Variable, "_Var"), Variable = paste0(Variable, "_Mean")) %>%
+    pivot_wider(id_cols = "COMID", names_from = VarNames, values_from = VarVals) 
+
+## join together
+
+tass_all <- full_join(tass_sp_vars, tass_sp_means, by = "COMID" )
+
+head(tass_all)  
+
+save(tass_all, file="ignore/00a_remote_sensing_data_per_comid.RData")
+
+
+# Join to main data and save ----------------------------------------------
+
+class(NewDataObsSub)
+
+load(file =  "ignore/00a_data_for_model.RData")
+load(file =  "ignore/00a_data_for_prediction.RData")
+
+head(NewDataObs)
+
+## predic data
+NewDataObs <- NewDataObs %>% 
+  dplyr::select(-contains("FINAL")) %>%
+  right_join(tass_all, by = "COMID")
+
+## model data
+NewDataObsSub <- NewDataObsSub %>% 
+  dplyr::select(-contains("FINAL")) %>%
+  left_join(tass_all, by = "COMID") 
+  
+
+
+save(NewDataObsSub, file =  "ignore/00a_data_for_model.RData")
+save(NewDataObs, file =  "ignore/00a_data_for_prediction.RData")
+

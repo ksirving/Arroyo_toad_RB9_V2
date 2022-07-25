@@ -359,21 +359,14 @@ library(viridis)
 
 library(ggmap)
 
+nhd_lines_probx <- nhd_lines_prob %>%
+  dplyr::select(COMID, probOcc, geometry)
+
+st_write(nhd_lines_probx, "output_data/full_model/01_full_model_prob_occurrence.shp", layer_options = "OVERWRITE=true")
+
 # For google map, you have to give the center of the window you are looking at.
 # Possibility for the map type argument: terrain / satellite / roadmap / hybrid
 
-# get the map info
-map <- get_googlemap("Montpellier, France", zoom = 8, maptype = "terrain")
-?register_google
-
-# Plot it
-ggmap(map) + 
-  theme_void() + 
-  ggtitle("terrain") + 
-  theme(
-    plot.title = element_text(colour = "orange"), 
-    panel.border = element_rect(colour = "grey", fill=NA, size=2)
-  )
 
 map1 <- ggplot() +
   geom_sf(data = nhd_lines_prob, aes(color = probOcc)) + 
@@ -388,7 +381,7 @@ ggsave(map1, filename=file.name1, dpi=300, height=5, width=6)
 library(mapview)
 library(sf)
 library(RColorBrewer)
-webshot::install_phantomjs()
+# webshot::install_phantomjs()
 
 ## map
 # set background basemaps:
@@ -405,8 +398,8 @@ m1 <- mapview(nhd_lines_prob, zcol = "probOcc",  legend = TRUE, layer.name = "Pr
 
 m1@map %>% leaflet::addMeasure(primaryLengthUnit = "meters")
 
-mapshot(m1, url = paste0(getwd(), "/ignore/map.html"),
-        file = paste0(getwd(), "/ignore/map.png"))
+mapshot(m1, url = paste0(getwd(), "/ignore/01_full_model_prob_occs_mapview.html"),
+        file = paste0(getwd(), "/ignore/01_full_model_prob_occs_mapview.png"))
 getwd()
 
 

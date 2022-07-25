@@ -60,6 +60,8 @@ names(all_data_obs)
 
 
 # Random forest model -----------------------------------------------------
+
+set.seed(234)
 # NUMBER OF BOOTSTRAP REPLICATES
 b=10001
 
@@ -81,13 +83,21 @@ length(ydata)
 # CREATE NEW XDATA BASED ON SELECTED MODEL AND RUN FINAL RF MODEL (Model 4)
 #RF runs differently when you use symbolis languate (using ~ as in an Lin. Model... use the indexing approacy [y=rf.data[,1]...]
 
-sel.vars <- rf.model$PARAMETERS[[3]]# set to use 2 - lowest error rate and has all hydro vars
+sel.vars <- rf.model$PARAMETERS[[3]]# set to use 3 - lowest error rate and has all hydro vars
 
 rf.data <- data.frame(y=ydata, xdata[,sel.vars])	
 
-(rf.final <- randomForest(y=rf.data[,1], x=rf.data[,2:ncol(rf.data)], ntree=b, mtry = 7,nodesize=5,
+(rf.final <- randomForest(y=rf.data[,1], x=rf.data[,2:ncol(rf.data)], ntree=b, mtry = 8,nodesize=5,
                           importance=TRUE, norm.votes=TRUE, proximity=TRUE) )
-names(rf.data )
+names(rf.data)
+rf.data
+
+#OOB estimate of  error rate: 18.64%
+
+
+
+# Model performance --------------------------------------------------------
+
 
 ## split into training and testing
 
@@ -100,7 +110,7 @@ names(testing)
                           importance=TRUE, norm.votes=TRUE, proximity=TRUE) )
 
 plot(rf.train)
-?randomForest
+
 dim(testing)
 testing
 
@@ -184,38 +194,11 @@ m1
 file.name1 <- "/Users/katieirving/Documents/Documents - Katie’s MacBook Pro/git/Arroyo_toad_RB9/Figures/01_full_model_mds_scale_no_clim.jpg"
 ggsave(m1, filename=file.name1, dpi=300, height=5, width=6)
 
-
-# Coeficients and importance ----------------------------------------------
-
-rf.final$importance[,1]
-varImpPlot(rf.final)
-
-rf.final$oob.times
-rf.final$test
-
-# PLOT BOOTSTRAP ERROR CONVERGENCE
-plot(rf.final, main="Bootstrap Error Convergence")
-
-# PLOT VARIABLE IMPORTANCE
-p <- as.matrix(rf.final$importance)    
-ord <- rev(order(p[,1], decreasing=TRUE)[1:dim(p)[1]])  
-dotchart(p[ord,1], main="Scaled Variable Importance", pch=19)
-
-# PLOT PROTOTYPES (MULTIVARIATE CLASS CENTERS)					  
-rf.p <- classCenter(xdata, ydata, rf.final$prox)
-v1=4; v2=1
-plot(xdata[,v1], xdata[,v2], pch=21, xlab=names(xdata)[v1], ylab=names(xdata)[v2],
-     bg=c("black", "grey94")[as.numeric(factor(ydata))], main="Data with Prototypes")
-points(rf.p[,v1], rf.p[,v2], pch=21, cex=2.5, bg=c("blue", "red"))					  
-
-
-
-# Predictions and model performance ----------------------------------------------------------------
-
 library(ROCR)
 
 all_data_obs <- all_data_obs %>% mutate(NewObs = as.factor(NewObs))
 names(all_data_obs)
+dim(all_data_obs)
 sel.vars
 # all_data_obs  <- all_data_obs[,sel.vars]
 #Index refers to the right column of probabilities - in this model the second column, which is probs of "1"
@@ -258,11 +241,36 @@ rf.final$pred[order(model_rf$pred$rowIndex),2]
 
 #output
 
+
+# Coeficients and importance ----------------------------------------------
+
+rf.final$importance[,1]
+varImpPlot(rf.final)
+
+rf.final$oob.times
+rf.final$test
+
+# PLOT BOOTSTRAP ERROR CONVERGENCE
+plot(rf.final, main="Bootstrap Error Convergence")
+
+# PLOT VARIABLE IMPORTANCE
+p <- as.matrix(rf.final$importance)    
+ord <- rev(order(p[,1], decreasing=TRUE)[1:dim(p)[1]])  
+dotchart(p[ord,1], main="Scaled Variable Importance", pch=19)
+
+# PLOT PROTOTYPES (MULTIVARIATE CLASS CENTERS)					  
+rf.p <- classCenter(xdata, ydata, rf.final$prox)
+v1=4; v2=1
+plot(xdata[,v1], xdata[,v2], pch=21, xlab=names(xdata)[v1], ylab=names(xdata)[v2],
+     bg=c("black", "grey94")[as.numeric(factor(ydata))], main="Data with Prototypes")
+points(rf.p[,v1], rf.p[,v2], pch=21, cex=2.5, bg=c("blue", "red"))					  
+
+
 # Predict on all rb9 region-------------------------------------------------------
 
 #Index refers to the right column of probabilities - in this model the second column, which is probs of "1"
 all_data <- na.omit(NewDataObs)
-all_data <- all_data[,c("COMID", sel.vars)] 
+# all_data <- all_data[,c("COMID", sel.vars)] 
 head(all_data)
 str(all_data)
 
@@ -277,14 +285,158 @@ pred_df$COMID <- all_data$COMID
 
 pred_df
 
+## get probability, known occs and env data all together 
+
+# obs <- NewDataObsSub 
+
 pred_env <- pred_df %>%
   full_join(all_data, by = "COMID") %>%
-  rename(probOcc = 2)
+  rename(probOcc = 2) %>%
+  dplyr::select(probOcc, COMID, NewObs, DS_Mag_50:Wet_BFL_Mag_10)
+
+write.csv(pred_env, "02_hydro_obs_preds_no_clim_model.csv")
 
 head(pred_env)
 
-# partial dependence plots ------------------------------------------------
+# Response curves/relationships ------------------------------------------------
 
+## change in delta
+
+## test change in delta curves with absolute values
+## may need to be run with actual values, no delta
+
+## change to absolute
+rf.data.ch <- abs(rf.data[, -1]) %>%
+  mutate(Y = rf.data$Y)
+
+## define ffm 
+
+i=3
+m=2
+
+ffm <- names(rf.data.ch)[16:19]
+ffm
+
+## observation data with comids
+all_data_obs <- na.omit(all_data_obs)
+length(all_data_obs$COMID)
+
+dim(rf.data)
+
+## get means of all variables
+
+rf.data.mean <- rf.data %>%
+  pivot_longer(FINAL...01..4:MRVBF.Mx, names_to = "Variable", values_to="Value") %>%
+  group_by(Variable) %>%
+  summarise(MeanVal = mean(Value))
+
+## make data long - raw values of ffm
+
+rf.data.long <- rf.data %>%
+  pivot_longer(FINAL...01..4:MRVBF.Mx, names_to = "Variable", values_to="Value")
+
+rf.data.long
+
+full_data <- NULL
+
+for(m in 1:length(ffm)) {
+  
+metric <- ffm[m]
+metric
+
+metricVals <- rf.data %>%
+  pivot_longer(FINAL...01..4:MRVBF.Mx, names_to = "Variable", values_to="Value") %>%
+  filter(Variable %in% metric)
+  
+head(metricVals)
+  
+## get sequence to predict on
+incr <- seq(min(metricVals$Value), max(metricVals$Value), (max(metricVals$Value)/20))
+incr <- rev(incr)
+incr
+(max(metricVals$Value)/20)
+datax <- data.frame(incr)
+datax
+
+pred_df_incrx <- NULL
+
+## replace mean of ffm with increment and predi using rf model
+
+  for(i in 1: length(incr)) {
+  
+  
+  # data <- rf.data.mean %>%
+  #   mutate(MeanVal = ifelse(Variable == metric, incr[i] MeanVal)) %>%
+  #   pivot_wider(names_from = Variable, values_from = MeanVal)
+    
+    ## replace metric values with increment
+    data <- rf.data %>%
+      select(-paste(metric)) %>%
+      mutate(increment = incr[i])
+    
+  ## change name for prediction
+  colnames(data)[25] <- metric
+  
+  ## predict on increments one at a time
+  pred_df_incr <- as.data.frame(predict(rf.final, data, type="prob",  index=2, 
+                                        na.rm=TRUE, overwrite=TRUE, progress="window"))
+  
+  pred_df_incr
+  pred_df_incr[,3] <- incr[i]
+  pred_df_incr[,4] <- i
+  
+  pred_df_incrx <- bind_rows(pred_df_incrx, pred_df_incr)
+  
+  # colnames(pred_df_incr) [i+2] <- paste0("Increment_", i)
+  # datax[i,2] <- pred_df_incr[2] ## proability of occurrence
+  # datax[,4] <- metric ## metric name
+
+  
+  }
+
+
+
+pred_df_incrx$COMID <- all_data_obs$COMID
+pred_df_incrx$FFM <- metric
+
+## change names and combine
+colnames(pred_df_incrx)[1:4] <- c("ProbAbs", "ProbPres", "IncrementValue", "IncrementNumber")
+
+full_data <- bind_rows(full_data, pred_df_incrx)
+
+}
+
+
+head(full_data)
+unique(full_data$FFM)
+
+coms <- unique(full_data$COMID)[c(1,4,46,87,245)]
+
+full_data_sub <- full_data %>%
+  filter(COMID %in% coms)
+
+
+## plot
+
+p1 <- ggplot(full_data_sub, aes(y= ProbPres, x = IncrementValue)) +
+  geom_path() +
+  facet_grid(rows = vars(COMID), cols = vars(FFM), scales = "free_x")
+
+p1
+
+file.name1 <- "/Users/katieirving/Documents/Documents - Katie’s MacBook Pro/git/Arroyo_toad_RB9_V2/Figures/02_incremental_preds_sep_coms.jpg"
+ggsave(p1, filename=file.name1, dpi=300, height=5, width=6)
+
+# p1 <- ggplot(all_data, aes(y= ProbOcc, x = increment)) +
+#   geom_smooth() +
+#   facet_wrap(~FFM, scales = "free_x")
+# 
+# p1
+# 
+# file.name1 <- "/Users/katieirving/Documents/Documents - Katie’s MacBook Pro/git/Arroyo_toad_RB9_v2/Figures/02_incremental_preds.jpg"
+# ggsave(p1, filename=file.name1, dpi=300, height=5, width=6)
+
+## partial dependence plots
 sp=0.6
 pdf("/Users/katieirving/Documents/Documents - Katie’s MacBook Pro/git/Arroyo_toad_RB9_V2/Figures/PartialPlots_6_no_clim.pdf", width=8, height=8)
 p <- as.matrix(rf.final$importance)    
@@ -302,25 +454,6 @@ for (i in 1:length(names(rf.data[,2:ncol(rf.data)])) ) {
         main=paste("PARTIAL PLOT", names(rf.data[,2:ncol(rf.data)])[i], sep=" - ")) 
 }
 dev.off() 
-
-## partial plots only hydro
-# 
-# pdf("/Users/katieirving/Documents/Documents - Katie’s MacBook Pro/git/Arroyo_toad_RB9/Figures/PartialPlots_hydro_fa_mag.pdf", width=8, height=8)
-# 
-# hyd_vars <- rf.data[,44:47]
-# hyd_vars
-# i= 45
-# names(rf.data)
-# 
-# for (i in 44:length(names(hyd_vars)) ) {
-#   p <- partialPlot(rf.final, rf.data[,2:ncol(rf.data)], 
-#                    names(rf.data[,2:ncol(rf.data)])[i], which.class="1", plot=FALSE)   
-#   p$y <- (p$y - min(p$y)) / (max(p$y) - min(p$y)) 
-#   plot( y=lowess(y=p$y, x=p$x, f=sp)$y, x=p$x, type="l", ylab="p",  
-#         xlab=names(rf.data[,2:ncol(rf.data)])[i],
-#         main=paste("PARTIAL PLOT", names(rf.data[,2:ncol(rf.data)])[i], sep=" - ")) 
-# }
-# dev.off() 
 
 
 
@@ -409,12 +542,11 @@ getwd()
 
 ## the hydro curves aren't polynomial over zero delta, why?
 
-
 head(pred_env)
 
 ## check predictions, prob of occurece
 pred_ev <- pred_env %>%
-  dplyr::select(probOcc, DS_Mag_50:Wet_BFL_Mag_10) %>%
+  # dplyr::select(probOcc, DS_Mag_50:Wet_BFL_Mag_10) %>%
   pivot_longer(DS_Mag_50:Wet_BFL_Mag_10, names_to = "FFM", values_to = "Value")
 
 head(pred_ev)
@@ -437,41 +569,10 @@ orgi_dat <- NewDataObsSub %>%
   dplyr::select(NewObs, DS_Mag_50:Wet_BFL_Mag_10) %>%
   pivot_longer(DS_Mag_50:Wet_BFL_Mag_10, names_to = "FFM", values_to = "Value")
 
-ggplot(data = orgi_dat, aes(y=NewObs, x=Value)) +
+ggplot(data = subset(pred_ev, !NewObs == -999), aes(y=NewObs, x=Value)) +
   geom_point() +
-  geom_smooth( method = glm) +
+  geom_smooth( method = loess, se = F) +
   facet_wrap(~FFM, scales="free_x")
 
-##################################################
-# PROXIMITY MULTIDIMENSIONAL SCALING (MDS) PLOTS #
-##################################################
-
-######### FUNCTION TO CREATE COLOR VECTOR #########
-#AWESOME!!! SAVE THIS FOREVER!!! - Orders color ramp with data#
-cRamp <- function(x,d=c("blue", "red")){
-  crange <- function(x)(as.numeric(x)-min(as.numeric(x)))/diff(range(as.numeric(x)))
-  cols <- colorRamp(d)(crange(x))
-  apply(cols, 1, function(xt)rgb(xt[1], xt[2], xt[3], maxColorValue=255))
-}  
 
 
-###################################################
-
-# CREATE CMD SCALED DISTANCES OF RF PROXMITIES
-rf.cmd <- cmdscale(1 - rf.final$proximity, eig=TRUE, k=4)  
-pa.col <- cRamp(ydata)  
-rf.cmd <- data.frame(rf.cmd$points)
-
-# 2D PLOT OF FIRST TWO MDS DIMENSIONS	
-plot(rf.cmd[,1:2], ylab="DIM 1", xlab="DIM 2", pch=16, col=pa.col,
-     main= paste("Pres/Abs", "PROXIMITY MATRIX MDS d=2", sep=" - "))
-legend("bottomright", pch=c(16,16), col=c("blue", "red"), 
-       legend=c("Absent","Present")) 
-
-# 3D PLOT OF FIRST THREE MDS DIMENSIONS - Interactive using Windows RGL Driver (Library RGL)	   
-plot3d(rf.cmd[,1],rf.cmd[,2],rf.cmd[,3], col=pa.col,
-       pch=18, size=1.25, type="s", xlab="MDS dim 1", ylab="MDS dim 2", 
-       zlab="MDS dim 3")	
-
-# SAVE R IMAGE 
-save.image( paste(path, "Cur_10x_Final_Feb2014/Model1/RFClassModel.RData", sep="/") ) 

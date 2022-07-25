@@ -139,8 +139,8 @@ data1a
 ## join presence/absence to env df
 
 load(file = "ignore/00_all_env_bio_data_NHD_reach.RData") ## all_data
-head(all_data)
-names(all_data2)
+check <- all_data[,41:84]
+names(all_data)
 
 ## join all data with all data with pres/absence
 all_data2 <- full_join(all_data, data1a, by = "COMID") %>% ### doesn't match all comids - fix!
