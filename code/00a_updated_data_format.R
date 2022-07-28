@@ -152,40 +152,40 @@ bio1_sub <- st_transform(bio1_sub, crs = 4269)
 bio1_sub_rb9 <- st_intersects(bio1_sub, nhd_lines_rb9) ## nothing matches, try again later!!!
 
 # Create dataframe for looking up COMIDS (here use all stations)
-data_segs <- bio1_sub %>%
-  dplyr::select(ID, Latitude, Longitude) %>%
-  distinct(ID, Latitude, Longitude) %>% 
-  st_as_sf(coords=c( "Latitude", "Longitude"), crs=4326, remove=F) %>%
-  st_transform(crs=32611) %>%
-  arrange(ID)
-
-crs(data_segs)
-head(data_segs)
-dim(data_segs)
-
-# use nhdtools to get comids
-data_all_coms <- data_segs %>%
-  group_split(ID) %>%
-  set_names(., data_segs$ID) %>%
-  map(~discover_nhdplus_id(.x$geometry))
-
-data_all_coms
-
-# flatten into single dataframe instead of list
-data_segs_df <-data_all_coms %>% flatten_dfc() %>% t() %>%
-  as.data.frame() %>%
-  rename("COMID"=V1) %>% rownames_to_column(var = "ID") 
-
-head(data_segs_df)
-
-bio_data2 <- full_join(bio_sub, data_segs_df, by = "ID")
-object.size(bio_data2)
-
-length(unique(bio_data2$COMID)) ## 214
-
-
-save(bio_data2, file = "ignore/00a_al_bio_data_COMIDs.RData")
-load(file = "ignore/00a_al_bio_data_COMIDs.RData") # bio_data2
+# data_segs <- bio1_sub %>%
+#   dplyr::select(ID, Latitude, Longitude) %>%
+#   distinct(ID, Latitude, Longitude) %>% 
+#   st_as_sf(coords=c( "Latitude", "Longitude"), crs=4326, remove=F) %>%
+#   st_transform(crs=32611) %>%
+#   arrange(ID)
+# 
+# crs(data_segs)
+# head(data_segs)
+# dim(data_segs)
+# 
+# # use nhdtools to get comids
+# data_all_coms <- data_segs %>%
+#   group_split(ID) %>%
+#   set_names(., data_segs$ID) %>%
+#   map(~discover_nhdplus_id(.x$geometry))
+# 
+# data_all_coms
+# 
+# # flatten into single dataframe instead of list
+# data_segs_df <-data_all_coms %>% flatten_dfc() %>% t() %>%
+#   as.data.frame() %>%
+#   rename("COMID"=V1) %>% rownames_to_column(var = "ID") 
+# 
+# head(data_segs_df)
+# 
+# bio_data2 <- full_join(bio_sub, data_segs_df, by = "ID")
+# object.size(bio_data2)
+# 
+# length(unique(bio_data2$COMID)) ## 214
+# 
+# 
+# save(bio_data2, file = "ignore/00a_al_bio_data_COMIDs.RData")
+# load(file = "ignore/00a_al_bio_data_COMIDs.RData") # bio_data2
 
 # Format presence absence etc ---------------------------------------------
 

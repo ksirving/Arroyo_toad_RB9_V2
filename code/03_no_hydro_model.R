@@ -29,10 +29,11 @@ NewDataObs <- NewDataObs %>%
 source("original_model/Current/randomForests/PARTITIONING/DATA3/Functions.R")
 
 # Join observations and mulitcolinearlity -------------------------------------------------------
-
-## remove climate vars
+names(NewDataObsSub)
+## remove hydro vars
+## remove nas and rearrange for easy indexing
 all_data_obs <- NewDataObsSub %>%
-  select(-c(DS_Mag_50:Wet_BFL_Mag_10)) %>%
+  select(COMID, NewObs, Shape_Leng,pptAnnAv:TmaxMon12, -c(DS_Mag_50:Wet_BFL_Mag_10), AvgClay:AvgSlope, DEM_10m.Mn:MRVBF.Mx , TC_042014_RB9.1_Var:TC_092014_RB9.3_Mean, geometry) %>%
   drop_na()
 
 sum(is.na(all_data_obs))
@@ -40,8 +41,8 @@ dim(all_data_obs)
 names(all_data_obs)
 
 
-cl <- MultiColinear(all_data_obs[,c(2:40, 42:98)], p=0.05)
-xdata <- all_data_obs[,c(2:40, 42:98)]
+cl <- MultiColinear(all_data_obs[,c(7:67)], p=0.05)
+xdata <- all_data_obs[,c(7:67)]
 xdata
 
 for(l in cl) {
@@ -64,7 +65,7 @@ names(all_data_obs)
 b=10001
 
 ydata <- as.factor(all_data_obs$NewObs)
-xdata <- all_data_obs[,c(2:13, 15:55)]## do not include template layer
+xdata <- all_data_obs[,c(4:43)]## do not include template layer
 
 class(ydata)
 length(ydata)
@@ -89,39 +90,8 @@ rf.data <- data.frame(y=ydata, xdata[,sel.vars])
                           importance=TRUE, norm.votes=TRUE, proximity=TRUE) )
 names(rf.data )
 
-## split into training and testing
 
-setsize <- floor(nrow(rf.data)*0.8)
-index <- sample(1:nrow(rf.data), size = setsize)
-training <- rf.data[index,]
-testing <- rf.data[-index,]
-names(testing)
-(rf.train <- randomForest(y=training[,1], x=training[,2:ncol(training)], ntree=b,  nodesize=5,
-                          importance=TRUE, norm.votes=TRUE, proximity=TRUE) )
-
-plot(rf.train)
-?randomForest
-dim(testing)
-testing
-
-result <- as.data.frame(predict(rf.train, testing[,c(2:44)], type = "response"))
-result$y <- testing$y
-
-
-plot(result)
-View(result)
-
-### visualise trees
-
-library(rpart)
-
-pdf("/Users/katieirving/Documents/Documents - Katie’s MacBook Pro/git/Arroyo_toad_RB9_V2/Figures/01_Trees_no_hydro.pdf", width=25, height=15)
-
-full_tree <- rpart(y~., method = "class", control = rpart.control(cp = 0, minsplit = 2), data = rf.data)
-plot(full_tree)
-text(full_tree, use.n = T)
-
-dev.off()
+# Tuning ------------------------------------------------------------------
 
 ##  check error rates
 
@@ -185,6 +155,81 @@ file.name1 <- "/Users/katieirving/Documents/Documents - Katie’s MacBook Pro/gi
 ggsave(m1, filename=file.name1, dpi=300, height=5, width=6)
 
 
+# Validation --------------------------------------------------------------
+
+## make y data compatible
+rf.data.val <- rf.data %>%
+  mutate(y = ifelse(y==1, "Present", "Absent")) %>%
+  mutate(y = factor(y, levels = c("Present", "Absent")))
+
+str(rf.data.val)
+
+## split into training and testing
+
+setsize <- floor(nrow(rf.data)*0.8)
+index <- sample(1:nrow(rf.data), size = setsize)
+training <- rf.data.val[index,]
+testing <- rf.data.val[-index,]
+training
+
+
+trcontrol = trainControl(method='cv', number=10, savePredictions = T,
+                         classProbs = TRUE,summaryFunction = twoClassSummary,returnResamp="all")
+
+model = train(y ~ . , data=training, method = "rf", trControl = trcontrol,metric="ROC") 
+
+model$resample
+
+model
+
+# mtry  ROC        Sens       Spec     
+# 2    0.8400000  0.8133333  0.6923077
+# 11    0.8333333  0.7933333  0.7230769
+# 20    0.8230769  0.7800000  0.7076923
+# 
+# ROC was used to select the optimal model using the largest value.
+# The final value used for the model was mtry = 2.
+
+
+confusionMatrix(predict(model,testing),testing$y)
+
+# Confusion Matrix and Statistics
+# 
+# Reference
+# Prediction Present Absent
+# Present      32      5
+# Absent        8     25
+# 
+# Accuracy : 0.8143          
+# 95% CI : (0.7034, 0.8972)
+# No Information Rate : 0.5714          
+# P-Value [Acc > NIR] : 1.539e-05       
+# 
+# Kappa : 0.6255          
+# 
+# Sensitivity : 0.8             
+# Specificity : 0.8333          
+# Pos Pred Value : 0.8649          
+# Neg Pred Value : 0.7576          
+# Prevalence : 0.5714          
+# Detection Rate : 0.4571          
+# Detection Prevalence : 0.5286          
+# 
+# 'Positive' Class : Present        
+
+### visualise trees
+
+library(rpart)
+
+pdf("/Users/katieirving/Documents/Documents - Katie’s MacBook Pro/git/Arroyo_toad_RB9_V2/Figures/01_Trees_no_hydro.pdf", width=25, height=15)
+
+full_tree <- rpart(y~., method = "class", control = rpart.control(cp = 0, minsplit = 2), data = rf.data)
+plot(full_tree)
+text(full_tree, use.n = T)
+
+dev.off()
+
+
 # Coeficients and importance ----------------------------------------------
 
 rf.final$importance[,1]
@@ -210,53 +255,6 @@ points(rf.p[,v1], rf.p[,v2], pch=21, cex=2.5, bg=c("blue", "red"))
 
 
 
-# Predictions and model performance ----------------------------------------------------------------
-
-library(ROCR)
-
-all_data_obs <- all_data_obs %>% mutate(NewObs = as.factor(NewObs))
-names(all_data_obs)
-sel.vars
-# all_data_obs  <- all_data_obs[,sel.vars]
-#Index refers to the right column of probabilities - in this model the second column, which is probs of "1"
-
-pred1 <- predict(rf.final, all_data_obs, filename="output_data/Current/Model1/SppProbs_no_hydro.img", type="prob",  index=2, 
-                 na.rm=TRUE, overwrite=TRUE, progress="window")
-
-pred1
-
-pred2 = prediction(pred1[,2], all_data_obs$NewObs)
-pred2
-
-# # 1. Area under curve
-# performance(perf, "auc")
-# 
-# 2. True Positive and Negative Rate
-perf = performance(pred2, "tpr","fpr")
-# 3. Plot the ROC curve
-plot(perf,main="ROC Curve for Random Forest",col=2,lwd=2)
-abline(a=0,b=1,lwd=2,lty=2,col="gray") ## model is too good!!!
-
-perf <- performance(pred2,"tpr","fpr")
-perf@x.name
-plot(perf)
-perf@x.values
-
-# precision/recall curve (x-axis: recall, y-axis: precision)
-perf <- performance(pred2, "prec", "rec")
-perf
-plot(perf)
-
-# sensitivity/specificity curve (x-axis: specificity,
-# y-axis: sensitivity)
-perf <- performance(pred2, "sens", "spec")
-perf
-plot(perf)
-
-rf.final$confusion
-rf.final$pred[order(model_rf$pred$rowIndex),2]
-
-#output
 
 # Predict on all rb9 region-------------------------------------------------------
 
