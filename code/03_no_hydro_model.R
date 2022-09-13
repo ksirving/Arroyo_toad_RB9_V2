@@ -36,13 +36,14 @@ all_data_obs <- NewDataObsSub %>%
   select(COMID, NewObs, Shape_Leng,pptAnnAv:TmaxMon12, -c(DS_Mag_50:Wet_BFL_Mag_10), AvgClay:AvgSlope, DEM_10m.Mn:MRVBF.Mx , TC_042014_RB9.1_Var:TC_092014_RB9.3_Mean, geometry) %>%
   drop_na()
 
+
 sum(is.na(all_data_obs))
 dim(all_data_obs)
 names(all_data_obs)
 
 
-cl <- MultiColinear(all_data_obs[,c(7:67)], p=0.05)
-xdata <- all_data_obs[,c(7:67)]
+cl <- MultiColinear(all_data_obs[,c(4:67)], p=0.05)
+xdata <- all_data_obs[,c(4:67)]
 xdata
 
 for(l in cl) {
@@ -90,6 +91,7 @@ rf.data <- data.frame(y=ydata, xdata[,sel.vars])
                           importance=TRUE, norm.votes=TRUE, proximity=TRUE) )
 names(rf.data )
 
+# OOB estimate of  error rate: 18.86%
 
 # Tuning ------------------------------------------------------------------
 

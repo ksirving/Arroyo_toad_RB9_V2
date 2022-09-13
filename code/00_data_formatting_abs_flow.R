@@ -297,7 +297,7 @@ writeRaster(x, "ignore/00_raw_data_raster.grd", format="raster", crs="+proj=utm 
 
 ## currently delta ffm but can calculate current if needed
 
-delta <- read.csv("ignore/2022-07-26_predicted_abs_FFM_deltaFFM_SD_COMIDS_medianDelta_test5_norunoff.csv")
+delta <- read.csv("ignore/2022-07-28_predicted_abs_FFM_deltaFFM_SD_COMIDS_medianDelta_test5_norunoff.csv")
 head(delta)
 
 ## remove duplicates
@@ -364,8 +364,8 @@ names(data_hyd_sf)
 head(data_sf)
 
 length(unique(data_sub$COMID)) ## 3845
-length(unique(delta_med$COMID)) ## 73
-length(unique(data_hyd_sf$COMID)) ## 73
+length(unique(delta_med$COMID)) ## 2116
+length(unique(data_hyd_sf$COMID)) ## 2116
 
 ## scale to nhd reach
 data_hyd_sf_long <- data_hyd_sf %>%
@@ -377,7 +377,7 @@ data_hyd_sf_long <- data_hyd_sf %>%
 
     # save(data_hyd_sf_long, file="ignore/00_all_env_data_scaled.RData")
     head(data_hyd_sf_long)
-    rm(data_hyd_sf_long)
+    # rm(data_hyd_sf_long)
    
   unique(data_hyd_sf_long$Variable)
   ## elevation = min, catchment area = max, MRVBF = max, VRM1.Mn = min

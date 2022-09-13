@@ -18,8 +18,9 @@ getwd()
 path <- "ignore/FullData/"
 
 ## raw data - env vars with presence absence
-load(file = "ignore/00_all_env_bio_data_NHD_reach.RData") ## all_data
+load(file = "ignore/00_all_env_bio_data_NHD_reach.RData") ## all_data - _abs_hydro
 head(all_data)
+length(unique(all_data$COMID))
 # data <- read.csv(paste0(path, "200mCells_FullData_PresAbs_Complete_ThinnedCols.csv"))
 # head(data)
 # str(data$ID.2)
@@ -27,24 +28,31 @@ head(all_data)
 
 # USGS observation data ----------------------------------------------------
 
-bio <- read.csv("input_data/SCCWRP_BUMI_20220624.csv")
+bio <- read.csv("input_data/SCCWRP_BUMI_20220816.csv")
 head(bio)
-bio <- bio[-c(1562:1565),] ## remove rows with no date
+dim(bio)
+# bio <- bio %>% filter(!Date1 %in% complete.cases(bio$Date1)) ## remove rows with no date
 
+unique(bio$SurveyType) ## includes turtle, remove
+
+sum(bio$SurveyMethod == "Turtle: Visual")
+
+unique(bio$Date1)
 
 ## remove rows with no coords
 ## take only years until 2014
 ## make dummy ID variable
+## remove tuttle from SurveyMethod
 
 bio_sub <- bio %>% 
   filter(!is.na(StartLat), !is.na(StartLong)) %>%
-  separate(Date1, into = c("Month", "Day", "Year", "Time"), remove = F, sep=" |/") %>% 
-  filter(!Year > 14) %>%
+  separate(Date1, into = c("Month", "Day", "Year"), remove = F, sep=" |/") %>% 
+  filter(!Year > 14, !SurveyMethod %in% c("Turtle: Visual", "Turtle: Trapping")) %>%
   st_as_sf(coords=c( "StartLong", "StartLat"), crs=4326, remove=F) %>%
   mutate(ID = 1:length(geometry)) %>%
   mutate(ID = paste0("B", ID)) 
 
-dim(bio_sub)
+dim(bio_sub) ## 2164
   
 head(bio_sub)
 range(bio_sub$Year)
@@ -62,9 +70,9 @@ mapviewOptions(basemaps=basemapsList, fgb = FALSE)
 
 ## plot points
 m1 <- mapview(bio_sub, cex=6, col.regions="orange",
-              layer.name="Toad Observations USGS") +
-  mapview(bio1_sub, cex=6, col.regions="blue",
-          layer.name="Toad Observations Other")  
+              layer.name="Toad Observations USGS")# +
+  # mapview(bio_sub, cex=6, col.regions="blue",
+  #         layer.name="Toad Observations Other")  
 
 
 m1
@@ -74,14 +82,12 @@ m1@map %>% leaflet::addMeasure(primaryLengthUnit = "meters")
 # More observations data --------------------------------------------------
 
 bio1 <- read.csv("input_data/arroyo_toad_SDRB9_occurrence_historicaldata_othersources.csv")
-bio2 <- read.csv("input_data/SDRB9_arroyo_toad_CarlsbadFWO_1991_2020.csv")
-
+# bio2 <- read.csv("input_data/SDRB9_arroyo_toad_CarlsbadFWO_1991_2020.csv")
+# dim(bio2)
+# bio2
 ## remove rows with no coords
 ## take only years between 1990 -  2014
 ## make dummy ID variable
-
-bio1 <- bio1[-c(208:218),] ## remove rows with no date
-bio1_sub
 
 bio1_sub <- bio1 %>% 
   filter(!is.na(Latitude), !is.na(Longitude)) %>%
@@ -89,20 +95,6 @@ bio1_sub <- bio1 %>%
   filter(Year %in% 1990:2014) %>%
   # dplyr::select(Latitude:Longitude)
   st_as_sf(coords=c("Longitude", "Latitude"), crs=4326, remove=F) %>%
-  mutate(ID = 1:length(geometry)) %>%
-  mutate(ID = paste0("H", ID)) 
-
-str(bio_sub)
-
-
-bio2 #<- bio1[-c(208:218),] ## remove rows with no date
-bio1_sub
-bio1_sub <- bio1 %>% 
-  filter(!is.na(Latitude), !is.na(Longitude)) %>%
-  separate(EventDate, into = c("Month", "Day", "Year"), remove = F, sep="/") %>% 
-  filter(Year %in% 1990:2014) %>%
-  # dplyr::select(Latitude:Longitude)
-  st_as_sf(coords=c( "Latitude", "Longitude"), crs=4326, remove=F) %>%
   mutate(ID = 1:length(geometry)) %>%
   mutate(ID = paste0("H", ID)) 
 
@@ -138,64 +130,57 @@ head(data_segs_df)
 bio_data2 <- full_join(bio_sub, data_segs_df, by = "ID")
 object.size(bio_data2)
 
-length(unique(bio_data2$COMID)) ## 214
-
+length(unique(bio_data2$COMID)) ## 331
+head(bio_data2)
 
 save(bio_data2, file = "ignore/00a_al_bio_data_COMIDs.RData")
 load(file = "ignore/00a_al_bio_data_COMIDs.RData") # bio_data2
 
 ## other obs
 
-crs(nhd_lines_rb9)
-bio1_sub <- st_transform(bio1_sub, crs = 4269)
-
-bio1_sub_rb9 <- st_intersects(bio1_sub, nhd_lines_rb9) ## nothing matches, try again later!!!
-
 # Create dataframe for looking up COMIDS (here use all stations)
-# data_segs <- bio1_sub %>%
-#   dplyr::select(ID, Latitude, Longitude) %>%
-#   distinct(ID, Latitude, Longitude) %>% 
-#   st_as_sf(coords=c( "Latitude", "Longitude"), crs=4326, remove=F) %>%
-#   st_transform(crs=32611) %>%
-#   arrange(ID)
-# 
-# crs(data_segs)
-# head(data_segs)
-# dim(data_segs)
-# 
+data_segs <- bio1_sub %>%
+  dplyr::select(ID, Latitude, Longitude) %>%
+  distinct(ID, Latitude, Longitude) %>%
+  st_as_sf(coords=c("Longitude",  "Latitude"), crs=4269, remove=F) %>%
+  st_transform(crs=32611) %>%
+  arrange(ID)
+
+head(data_segs)
+
 # # use nhdtools to get comids
-# data_all_coms <- data_segs %>%
-#   group_split(ID) %>%
-#   set_names(., data_segs$ID) %>%
-#   map(~discover_nhdplus_id(.x$geometry))
-# 
-# data_all_coms
-# 
+data_all_coms <- data_segs %>%
+  group_split(ID) %>%
+  set_names(., data_segs$ID) %>%
+  map(~discover_nhdplus_id(.x$geometry))
+
+data_all_coms
+
 # # flatten into single dataframe instead of list
-# data_segs_df <-data_all_coms %>% flatten_dfc() %>% t() %>%
-#   as.data.frame() %>%
-#   rename("COMID"=V1) %>% rownames_to_column(var = "ID") 
-# 
-# head(data_segs_df)
-# 
-# bio_data2 <- full_join(bio_sub, data_segs_df, by = "ID")
-# object.size(bio_data2)
-# 
-# length(unique(bio_data2$COMID)) ## 214
-# 
-# 
-# save(bio_data2, file = "ignore/00a_al_bio_data_COMIDs.RData")
-# load(file = "ignore/00a_al_bio_data_COMIDs.RData") # bio_data2
+data_segs_df <-data_all_coms %>% flatten_dfc() %>% t() %>%
+  as.data.frame() %>%
+  rename("COMID"=V1) %>% rownames_to_column(var = "ID")
+
+head(data_segs_df)
+
+bio_data3 <- full_join(bio1_sub, data_segs_df, by = "ID")
+object.size(bio_data3)
+
+length(unique(bio_data3$COMID)) ## 19
+
+save(bio_data3, file = "ignore/00a_al_bio_data_COMIDs_SDRB9.RData")
+load(file = "ignore/00a_al_bio_data_COMIDs_SDRB9.RData") # bio_data3
 
 # Format presence absence etc ---------------------------------------------
 
 head(bio_data2)
 
 ## format: selected columns, make life stage counts long, 
+unique(bio$Count)
 
 bio <- bio_data2 %>%
-  dplyr::select(BUMIcount:PRCLcount, ID, COMID) %>%
-  pivot_longer(BUMIcount:PRCLcount, names_to = "LifeStage", values_to = "Count") %>%
+  dplyr::select(BUMIcount, ID, COMID) %>%
+  pivot_longer(BUMIcount, names_to = "LifeStage", values_to = "Count") %>%
   mutate(PresAbs = ifelse(Count < 1, 0, 1))
 
 ## make sure if reach has at least one presence then keeps it, if none then absence
@@ -203,11 +188,34 @@ bio <- bio %>%
   as.data.frame() %>%
   group_by(COMID, LifeStage) %>% 
   summarise(PresAbs = max(PresAbs)) %>%
-  filter(LifeStage == "BUMIcount")
+  filter(LifeStage == "BUMIcount") %>%
+  drop_na() %>%
+  mutate(LifeStage = "ALL")
 
 head(bio)
+dim(bio) ## 318
 
 unique(bio$PresAbs)
+
+## format other observations
+head(bio_data3)
+
+bio1 <- bio_data3 %>%
+  as.data.frame() %>%
+  dplyr::select(COMID) %>%
+  mutate(LifeStage = "ALL", PresAbs = 1) %>%
+  distinct()
+
+bio1
+bio
+
+# join obs together
+
+bioAll <- bind_rows(bio, bio1) %>% distinct()
+bioAll
+
+sum(bioAll$PresAbs ==1)
+sum(bioAll$PresAbs ==0)
 
 # add Mike's observations -------------------------------------------------
 
@@ -227,13 +235,13 @@ unique(orig_obs$COMID)
 
 ## join with new obs
 
-DataObs <- full_join(orig_obs, bio, by = "COMID") %>% dplyr::select(-LifeStage) %>%
+DataObs <- full_join(orig_obs, bioAll, by = "COMID") %>% dplyr::select(-LifeStage) %>%
   mutate(NewObs = ifelse(is.na(PresAbs), PresAbs200, PresAbs)) %>% ## use new presences, if NA add old presence/absences 
   dplyr::select(COMID, NewObs)
 
 head(DataObs)
 
-unique(DataObs$COMID)
+length(unique(DataObs$COMID)) ## 550
 
 
 # Add to predictors  ------------------------------------------------------
@@ -260,7 +268,7 @@ data_bio_env <- full_join(DataObs, all_data, by = "COMID") %>%
 
 data_bio_env
 
-length(unique(data_bio_env$COMID))
+length(unique(data_bio_env$COMID)) ## 2296
 
 ### 
 
@@ -270,6 +278,7 @@ length(unique(data_bio_env$COMID))
 ## remove old climate data (also removed remote sensing, i think, until updated)
 head(data_bio_env)
 names(data_bio_env)
+
 data_red <- data_bio_env %>%
   dplyr::select(-c(X81pptCr1:X81TMnCr13))
 
@@ -292,6 +301,8 @@ tmin_mon <- st_read("/Users/katieirving/SCCWRP/PRISM - General/Data/prism_monthl
 
 load(file= "ignore/00_all_env_bio_data.RData") ## data2
 head(data2)
+
+range(data2$FINAL...01..3)
 
 orig_grids <- data2 %>%
   dplyr::select(ID.2, X, Y, COMID) %>%
@@ -376,19 +387,25 @@ TmaxData <- full_join(TmaxAnn_join, TmaxMon_join, by = "COMID")
 
   head(allData)  
   length(unique(allData$COMID))
+  
+  sum(unique(allData$COMID) %in% unique(data_red$COMID))
 
   head(data_red)
+  length(unique(data_red$COMID))
   
   ## join back to main df
   NewData <- full_join(allData, data_red, by = "COMID") #%>% drop_na(PresAbs)
   
   head(NewData)
+  dim(NewData)
+  length(unique(NewData$COMID))
   
-  save(NewData, file = "ignore/00a_new_clim_obs_env.Rdata")
+  save(NewData, file = "ignore/00a_new_clim_obs_env_abs_flow.Rdata")
   
-
+load(file = "ignore/00a_new_clim_obs_env_abs_flow.Rdata")
  
  
+  str(nhd_lines_obs)
 # plot comids -------------------------------------------------------------
 
   nhd <- st_read("/Users/katieirving/SCCWRP/SD Hydro Vulnerability Assessment - General/Data/SpatialData/NHDplus_RB9.shp")
@@ -417,15 +434,14 @@ TmaxData <- full_join(TmaxAnn_join, TmaxMon_join, by = "COMID")
   ## join in obs
   
   nhd_lines_obs <- right_join(nhd_lines_rb9, DataObs, by = "COMID")
-  nhd_lines_obs <- st_zm(nhd_lines_obs) %>% mutate(nhd_lines_obs, NewObs = as.factor(NewObs)) %>%
+  nhd_lines_obs <- st_zm(nhd_lines_obs) %>% mutate(nhd_lines_obs, NewObs = as.factor(NewObs)) #%>%
     drop_na(Shape_Leng)
-  str(nhd_lines_obs)
   dim(nhd_lines_obs)
   
   
-  library(viridis)
+  # library(viridis)
   map1 <- ggplot() +
-    geom_sf(data = nhd_lines_rb9) # +
+    geom_sf(data = nhd_lines_rb9) +
     geom_sf(data = nhd_lines_obs, aes(colour = NewObs))
     # scale_fill_gradientn(colours=rev(magma(6))) ## colours not working
   
@@ -439,6 +455,7 @@ TmaxData <- full_join(TmaxAnn_join, TmaxMon_join, by = "COMID")
 
 head(NewData)
 names(NewData)  
+dim(NewData)
 nhd_lines_rb9$geometry
 
 ##  join all env data for region to flow lines
@@ -452,7 +469,7 @@ NewDataObs <- NewData %>%
 
 
 
-length(unique(NewDataObs$COMID)) ## all comids - 2116
+length(unique(NewDataObs$COMID)) ## all comids - 1992
 length(unique(NewData$COMID))
 
 ## join data with only known occurrences - for model build
@@ -461,15 +478,15 @@ NewDataObsSub <- NewDataObs %>%
   filter(COMID %in% nhd_lines_obs$COMID) 
 
 
-length(unique(NewDataObsSub$COMID)) ## occurrence comids 357
-length(unique(NewDataObs$COMID)) ## 2116
+length(unique(NewDataObsSub$COMID)) ## occurrence comids 353
+length(unique(NewDataObs$COMID)) ## 1992???
 
 # Save out ----------------------------------------------------------------
 
 class(NewDataObsSub)
 
-save(NewDataObsSub, file =  "ignore/00a_data_for_model.RData")
-save(NewDataObs, file =  "ignore/00a_data_for_prediction.RData")
+save(NewDataObsSub, file =  "ignore/00a_data_for_model_abs_flow.RData")
+save(NewDataObs, file =  "ignore/00a_data_for_prediction_abs_flow.RData")
 
 # Remote Sensing data -----------------------------------------------------
 
@@ -485,17 +502,16 @@ nhd_points_rb9 <- st_cast(nhd_lines_rb9, "POINT") %>% dplyr::select(-SHAPE_LENG)
 head(nhd_points_rb9)
 
 ## extract raster values
-sept_values <- extract(sept, nhd_points_rb9)
+sept_values <- raster::extract(sept, nhd_points_rb9)
 # head(sept_values_coord)
 sept_values_coord <- cbind(sept_values[,1:3], nhd_points_rb9)
-
 
 ## upload wet season data
 april <- brick("/Users/katieirving/Documents/Documents - Katie’s MacBook Pro/git/Arroyo_toad_RB9_V2/ignore/TC_2014_RB9/TC_042014_RB9.tif")
 # plot(april)
 
 ## extract raster values
-apr_values <- extract(april, nhd_points_rb9)
+apr_values <- raster::extract(april, nhd_points_rb9)
 # head(apr_values)
 
 ## join with sept values
@@ -539,8 +555,8 @@ save(tass_all, file="ignore/00a_remote_sensing_data_per_comid.RData")
 
 class(NewDataObsSub)
 
-load(file =  "ignore/00a_data_for_model.RData")
-load(file =  "ignore/00a_data_for_prediction.RData")
+load(file =  "ignore/00a_data_for_model_abs_flow.RData")
+load(file =  "ignore/00a_data_for_prediction_abs_flow.RData")
 
 head(NewDataObs)
 
@@ -554,8 +570,9 @@ NewDataObsSub <- NewDataObsSub %>%
   dplyr::select(-contains("FINAL")) %>%
   left_join(tass_all, by = "COMID") 
   
+dim(NewDataObs)
+dim(NewDataObsSub)
 
-
-save(NewDataObsSub, file =  "ignore/00a_data_for_model.RData")
-save(NewDataObs, file =  "ignore/00a_data_for_prediction.RData")
+save(NewDataObsSub, file =  "ignore/00a_data_for_model_abs_flow.RData")
+save(NewDataObs, file =  "ignore/00a_data_for_prediction_abs_flow.RData")
 

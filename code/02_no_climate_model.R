@@ -19,23 +19,31 @@ setwd("/Users/katieirving/Documents/Documents - Katie’s MacBook Pro/git/Arroyo
 
 ## upload data
 
-load(file =  "ignore/00a_data_for_model.RData") # NewDataObsSub - for model build
-load(file =  "ignore/00a_data_for_prediction.RData") #NewDataObs - for prediction
+load(file =  "ignore/00a_data_for_model_abs_flow.RData") # NewDataObsSub - for model build
+load(file =  "ignore/00a_data_for_prediction_abs_flow.RData") #NewDataObs - for prediction
 
 NewDataObs <- NewDataObs %>%
   as.data.frame() %>%
   dplyr::select(-geometry)
 
+dim(NewDataObs)
+
 ## get path for functions
 source("original_model/Current/randomForests/PARTITIONING/DATA3/Functions.R")
 
 # Join observations and mulitcolinearlity -------------------------------------------------------
-
+names(NewDataObsSub)
 ## remove climate vars
 ## remove nas and rearrange for easy indexing
+## remove ds 50 and change neg ffm values to zero
 all_data_obs <- NewDataObsSub %>%
-  select(COMID, NewObs, Shape_Leng, -c(pptAnnAv:TmaxMon12), AvgClay:MRVBF.Mx, TC_042014_RB9.1_Var:TC_092014_RB9.3_Mean, geometry) %>%
+  select(-DS_Mag_50) %>%
+  # pivot_longer(DS_Mag_90:Wet_BFL_Mag_10, names_to = "ffm", values_to = "value") %>%
+  # mutate(value = ifelse(value < 0, 0, value)) %>%
+  # pivot_wider(names_from = ffm, values_from = value) %>%
+  select(COMID, NewObs, SHAPE_LENG,-c(pptAnnAv:TmaxMon12), AvgClay:MRVBF.Mx, TC_042014_RB9.1_Var:TC_092014_RB9.3_Mean, geometry) %>%
   drop_na()
+
 
 
 sum(is.na(all_data_obs))
@@ -43,8 +51,8 @@ dim(all_data_obs)
 names(all_data_obs)
 
 
-cl <- MultiColinear(all_data_obs[,c(4:31)], p=0.05)
-xdata <- all_data_obs[,c(4:31)]
+cl <- MultiColinear(all_data_obs[,c(4:35)], p=0.05)
+xdata <- all_data_obs[,c(4:35)]
 xdata
 
 for(l in cl) {
@@ -69,7 +77,7 @@ set.seed(234)
 b=10001
 
 ydata <- factor(all_data_obs$NewObs, levels = c(1,0))
-xdata <- all_data_obs[,c(4:31)] ## do not include template layer
+xdata <- all_data_obs[,c(4:34)] ## do not include template layer
 
 class(ydata)
 length(ydata)
@@ -92,10 +100,10 @@ rf.data <- data.frame(y=ydata, xdata[,sel.vars])
 
 (rf.final <- randomForest(y=rf.data[,1], x=rf.data[,2:ncol(rf.data)], ntree=b, mtry = 2,nodesize=5,
                           importance=TRUE, norm.votes=TRUE, proximity=TRUE) )
-names(rf.data)
-rf.data
+# names(rf.data)
+# rf.data
 
-#OOB estimate of  error rate: 24.57%
+#OOB estimate of  error rate: 19.14%
 
 
 # Tuning ------------------------------------------------------------------
@@ -190,12 +198,12 @@ model$resample
 model
 
 # mtry  ROC        Sens       Spec     
-# 2    0.8186712  0.8204167  0.6480769
-# 8    0.8178900  0.8066667  0.6474359
-# 14    0.8063421  0.8004167  0.6480769
+# 2    0.8343590  0.7866667  0.7615385
+# 9    0.8264103  0.7600000  0.7461538
+# 16    0.8264103  0.7666667  0.7538462
 # 
 # ROC was used to select the optimal model using the largest value.
-# The final value used for the model was mtry = 2
+# The final value used for the model was mtry = 2.
 
 
 confusionMatrix(predict(model,testing),testing$y)
@@ -204,25 +212,25 @@ confusionMatrix(predict(model,testing),testing$y)
 # 
 # Reference
 # Prediction Present Absent
-# Present      31     10
-# Absent        8     21
+# Present      35      8
+# Absent        5     22
 # 
-# Accuracy : 0.7429          
-# 95% CI : (0.6244, 0.8399)
-# No Information Rate : 0.5571          
-# P-Value [Acc > NIR] : 0.001037        
+# Accuracy : 0.8143          
+# 95% CI : (0.7034, 0.8972)
+# No Information Rate : 0.5714          
+# P-Value [Acc > NIR] : 1.539e-05       
 # 
-# Kappa : 0.4754          
+# Kappa : 0.616           
 # 
-# Sensitivity : 0.7949          
-# Specificity : 0.6774          
-# Pos Pred Value : 0.7561          
-# Neg Pred Value : 0.7241          
-# Prevalence : 0.5571          
-# Detection Rate : 0.4429          
-# Detection Prevalence : 0.5857          
+# Sensitivity : 0.875           
+# Specificity : 0.7333          
+# Pos Pred Value : 0.814           
+# Neg Pred Value : 0.8148          
+# Prevalence : 0.5714          
+# Detection Rate : 0.5             
+# Detection Prevalence : 0.6143          
 # 
-# 'Positive' Class : Present 
+# 'Positive' Class : Present  
 ### visualise trees
 
 library(rpart)
@@ -239,6 +247,15 @@ dev.off()
 # Coeficients and importance ----------------------------------------------
 
 rf.final$importance[,1]
+
+pdf("/Users/katieirving/Documents/Documents - Katie’s MacBook Pro/git/Arroyo_toad_RB9_V2/Figures/var_imp_no_clim.pdf", width=20, height=10)
+
+varImpPlot(rf.final)
+
+dev.off()
+
+vp1
+
 varImpPlot(rf.final)
 
 rf.final$oob.times
@@ -277,7 +294,7 @@ pred_df <- as.data.frame(predict(rf.final, all_data,filename="output_data/Curren
 ## add comids
 pred_df$COMID <- all_data$COMID
 
-pred_df
+head(pred_df)
 
 ## get probability, known occs and env data all together 
 
@@ -285,7 +302,7 @@ pred_df
 
 pred_env <- pred_df %>%
   full_join(all_data, by = "COMID") %>%
-  rename(probOcc = 2) %>%
+  rename(probOcc = 1) %>%
   dplyr::select(probOcc, COMID, NewObs, DS_Mag_50:Wet_BFL_Mag_10)
 
 write.csv(pred_env, "02_hydro_obs_preds_no_clim_model.csv")
@@ -302,13 +319,13 @@ head(pred_env)
 ## change to absolute
 rf.data.ch <- abs(rf.data[, -1]) %>%
   mutate(Y = rf.data$Y)
-
+names(rf.data.ch)
 ## define ffm 
 
 i=3
 m=2
 
-ffm <- names(rf.data.ch)[16:19]
+ffm <- names(rf.data.ch)[11:16]
 ffm
 
 ## observation data with comids
@@ -316,18 +333,19 @@ all_data_obs <- na.omit(all_data_obs)
 length(all_data_obs$COMID)
 
 dim(rf.data)
+names(rf.data)
 
 ## get means of all variables
 
 rf.data.mean <- rf.data %>%
-  pivot_longer(FINAL...01..4:MRVBF.Mx, names_to = "Variable", values_to="Value") %>%
+  pivot_longer(AvgClay:SP_Mag, names_to = "Variable", values_to="Value") %>%
   group_by(Variable) %>%
   summarise(MeanVal = mean(Value))
 
 ## make data long - raw values of ffm
 
 rf.data.long <- rf.data %>%
-  pivot_longer(FINAL...01..4:MRVBF.Mx, names_to = "Variable", values_to="Value")
+  pivot_longer(AvgClay:SP_Mag, names_to = "Variable", values_to="Value")
 
 rf.data.long
 
@@ -339,7 +357,7 @@ metric <- ffm[m]
 metric
 
 metricVals <- rf.data %>%
-  pivot_longer(FINAL...01..4:MRVBF.Mx, names_to = "Variable", values_to="Value") %>%
+  pivot_longer(AvgClay:SP_Mag, names_to = "Variable", values_to="Value") %>%
   filter(Variable %in% metric)
   
 head(metricVals)
@@ -347,8 +365,7 @@ head(metricVals)
 ## get sequence to predict on
 incr <- seq(min(metricVals$Value), max(metricVals$Value), (max(metricVals$Value)/20))
 incr <- rev(incr)
-incr
-(max(metricVals$Value)/20)
+
 datax <- data.frame(incr)
 datax
 
@@ -367,10 +384,11 @@ pred_df_incrx <- NULL
     data <- rf.data %>%
       select(-paste(metric)) %>%
       mutate(increment = incr[i])
+    names(data)
     
   ## change name for prediction
-  colnames(data)[25] <- metric
-  
+  colnames(data)[17] <- metric
+
   ## predict on increments one at a time
   pred_df_incr <- as.data.frame(predict(rf.final, data, type="prob",  index=2, 
                                         na.rm=TRUE, overwrite=TRUE, progress="window"))
@@ -477,11 +495,11 @@ str(nhd_lines_rb9)
 nhd_lines_prob <- full_join(nhd_lines_rb9, pred_df, by = "COMID")
 nhd_lines_prob <- st_zm(nhd_lines_prob)
 
-plot(nhd_lines_prob[5])
+# plot(nhd_lines_prob[5])
 
 ### round prob values - change later
 nhd_lines_prob <- nhd_lines_prob %>%
-  rename(probOcc = 4) %>%
+  rename(probOcc = 3) %>%
   mutate(probRound = round(probOcc, digits=1))
 
 ## join in obs
@@ -495,16 +513,19 @@ nhd_lines_prob
 
 library(viridis)
 
+my_breaks <- c(0, 0.25, 0.5, 0.75, 1)
 
 map1 <- ggplot() +
   geom_sf(data = nhd_lines_prob, aes(color = probOcc)) + 
-  geom_sf(data = subset(nhd_lines_obs, NewObs == 1)) 
-# scale_fill_gradientn(colours=rev(magma(6))) ## colours not working
+  scale_colour_gradientn(colours=inferno(6), name="Probability of Occurrence",
+                     labels = my_breaks) +
+  geom_sf(data = subset(nhd_lines_obs, NewObs == 1), shape = 1, size = 2) 
+
 
 map1
 
-file.name1 <- "/Users/katieirving/Documents/Documents - Katie’s MacBook Pro/git/Arroyo_toad_RB9/Figures/01_full_model_prob_occs_map_no_clim.jpg"
-ggsave(map1, filename=file.name1, dpi=300, height=5, width=6)
+file.name1 <- "/Users/katieirving/Documents/Documents - Katie’s MacBook Pro/git/Arroyo_toad_RB9_V2/Figures/01_full_model_prob_occs_map_no_clim.jpg"
+ggsave(map1, filename=file.name1, dpi=300, height=5, width=8)
 
 library(mapview)
 library(sf)

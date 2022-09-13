@@ -17,32 +17,35 @@ setwd("/Users/katieirving/Documents/Documents - Katie’s MacBook Pro/git/Arroyo
 
 ## upload data
 
-load(file =  "ignore/00a_data_for_model.RData") # NewDataObsSub - for model build
-load(file =  "ignore/00a_data_for_prediction.RData") #NewDataObs - for prediction
+load(file =  "ignore/00a_data_for_model_abs_flow.RData") # NewDataObsSub - for model build
+load(file =  "ignore/00a_data_for_prediction_abs_flow.RData") #NewDataObs - for prediction
 
+head(NewDataObs)
 NewDataObs <- NewDataObs %>%
   as.data.frame() %>%
   dplyr::select(-geometry)
+
+length(unique(NewDataObs$COMID))
 
 ## get path for functions
 source("original_model/Current/randomForests/PARTITIONING/DATA3/Functions.R")
 
 # Join observations and mulitcolinearlity -------------------------------------------------------
+names( NewDataObsSub)
 
-## remove nas and rearrange for easy indexing
+## remove nas and rearrange for easy indexing, remove ds 50 and change neg ffm values to zero
 all_data_obs <- NewDataObsSub %>%
-  select(COMID, NewObs, Shape_Leng, pptAnnAv:TmaxMon12, AvgClay:MRVBF.Mx, TC_042014_RB9.1_Var:TC_092014_RB9.3_Mean, geometry) %>%
+  select(-DS_Mag_50) %>%
+  pivot_longer(DS_Mag_90:Wet_BFL_Mag_10, names_to = "ffm", values_to = "value") %>%
+  mutate(value = ifelse(value < 0, 0, value)) %>%
+  pivot_wider(names_from = ffm, values_from = value) %>%
+  select(COMID, NewObs, SHAPE_LENG, pptAnnAv:TmaxMon12, AvgClay:MRVBF.Mx, TC_042014_RB9.1_Var:Wet_BFL_Mag_10, geometry) %>%
   drop_na()
 
-sum(is.na(all_data_obs))
-dim(all_data_obs)
 names(all_data_obs)
-str(all_data_obs)
 
-all_data_obs
-
-cl <- MultiColinear(all_data_obs[,c(4:71)], p=0.05)
-xdata <- all_data_obs[,c(4:71)]
+cl <- MultiColinear(all_data_obs[,c(4:74)], p=0.05)
+xdata <- all_data_obs[,c(4:74)]
 xdata
 
 for(l in cl) {
@@ -59,7 +62,6 @@ for(l in cl) { all_data_obs <- all_data_obs[,-which(names(all_data_obs)==l)] }
 
 names(all_data_obs)
 
-
 # Random forest model -----------------------------------------------------
 
 set.seed(234)
@@ -68,7 +70,7 @@ set.seed(234)
 b=10001
 
 ydata <- factor(all_data_obs$NewObs, levels = c(1,0))
-xdata <- all_data_obs[,c(4:43)] 
+xdata <- all_data_obs[,c(4:46)] 
 
 class(ydata)
 length(ydata)
@@ -85,13 +87,13 @@ length(ydata)
 # CREATE NEW XDATA BASED ON SELECTED MODEL AND RUN FINAL RF MODEL (Model 4)
 #RF runs differently when you use symbolis languate (using ~ as in an Lin. Model... use the indexing approacy [y=rf.data[,1]...]
 
-sel.vars <- rf.model$PARAMETERS[[3]]# set to use 2 - lowest error rate and has all hydro vars
+sel.vars <- rf.model$PARAMETERS[[1]]# set to use 2 - lowest error rate and has all hydro vars
 
 rf.data <- data.frame(y=ydata, xdata[,sel.vars])	
 
 (rf.final <- randomForest(y=rf.data[,1], x=rf.data[,2:ncol(rf.data)], ntree=b, mtry = 2,nodesize=5,
                           importance=TRUE, norm.votes=TRUE, proximity=TRUE) )
-names(rf.data )
+names(rf.data)
 
 
 # Tuning ------------------------------------------------------------------
@@ -188,40 +190,41 @@ model$resample
 
 model
 
-# mtry  ROC        Sens       Spec     
-# 2    0.8709936  0.7737179  0.8295833
-# 11    0.8516132  0.7666667  0.8233333
-# 20    0.8356838  0.7205128  0.8100000
+  
+#   mtry  ROC        Sens       Spec     
+# 2    0.8312821  0.7800000  0.7307692
+# 22    0.8335897  0.7800000  0.7384615
+# 43    0.8269231  0.7733333  0.7076923
 # 
 # ROC was used to select the optimal model using the largest value.
-# The final value used for the model was mtry = 2.
+# The final value used for the model was mtry = 22.
 
 
 confusionMatrix(predict(model,testing),testing$y)
 
-# Confusion Matrix and Statistics
+# onfusion Matrix and Statistics
 # 
 # Reference
 # Prediction Present Absent
-# Present      32      5
-# Absent        9     24
+# Present      36      6
+# Absent        4     24
 # 
-# Accuracy : 0.8             
-# 95% CI : (0.6873, 0.8861)
-# No Information Rate : 0.5857          
-# P-Value [Acc > NIR] : 0.0001244       
+# Accuracy : 0.8571          
+# 95% CI : (0.7529, 0.9293)
+# No Information Rate : 0.5714          
+# P-Value [Acc > NIR] : 2.754e-07       
 # 
-# Kappa : 0.596           
+# Kappa : 0.7059          
 # 
-# Sensitivity : 0.7805          
-# Specificity : 0.8276          
-# Pos Pred Value : 0.8649          
-# Neg Pred Value : 0.7273          
-# Prevalence : 0.5857          
-# Detection Rate : 0.4571          
-# Detection Prevalence : 0.5286          
+# Sensitivity : 0.9             
+# Specificity : 0.8             
+# Pos Pred Value : 0.8571          
+# Neg Pred Value : 0.8571          
+# Prevalence : 0.5714          
+# Detection Rate : 0.5143          
+# Detection Prevalence : 0.6             
 # 
-# 'Positive' Class : Present 
+# 'Positive' Class : Present  
 
 ### visualise trees
 
@@ -281,9 +284,8 @@ pred_df
 
 # partial dependence plots ------------------------------------------------
 
-path
 sp=0.6
-pdf("/Users/katieirving/Documents/Documents - Katie’s MacBook Pro/git/Arroyo_toad_RB9_V2/Figures/PartialPlots_6.pdf", width=8, height=8)
+pdf("/Users/katieirving/Documents/Documents - Katie’s MacBook Pro/git/Arroyo_toad_RB9_V2/Figures/PartialPlots_6_full_model_no_negs.pdf", width=8, height=8)
 p <- as.matrix(rf.final$importance)    
 ord <- rev(order(p[,1], decreasing=TRUE)[1:dim(p)[1]])  
 dotchart(p[ord,1], main="Scaled Variable Importance", pch=19)
