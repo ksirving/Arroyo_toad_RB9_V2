@@ -65,7 +65,9 @@ head(data_segs_df)
 data2 <- full_join(data, data_segs_df, by = "ID.2")
 object.size(data2)
 
-load(file= "ignore/00_all_env_bio_data.RData") ## data2 - from old code, run and save new
+save(data2, file= "ignore/00_original_env_bio_comids.RData")
+
+load(file= "ignore/00_original_env_bio_comids.RData") ## data2 
 head(data2)
 
 # Remove climate and remote sensing variables (updated below) -------------
@@ -145,7 +147,7 @@ ppt_annSP <- spTransform(ppt_annSP, CRS("+proj=geocent +ellps=GRS80 +units=m +no
 
 ## create raster 
 ppt_annR <- rasterize(ppt_annSP, gridsR,  'ppt_annx',  na.rm =TRUE, sp = TRUE)
-
+ppt_annR
 ## temperature ###
 tmax_ann <- st_read("/Users/katieirving/SCCWRP/PRISM - General/Data/prism_annual average tmax_30yr.shp") %>% 
   rename(tmax_annx = PRISM__)
@@ -170,6 +172,8 @@ tmin_annR <- rasterize(tmin_annSP, gridsR,  'tmin_annx',  na.rm =TRUE, sp = TRUE
 annStack <- stack(ppt_annR, tmax_annR, tmin_annR)
 ## name layers
 names(annStack) <- c("ppt_ann", "tmax_ann", "tmin_ann")
+
+annStack 
 
 ## monthly data
 ppt_mon <- st_read("/Users/katieirving/SCCWRP/PRISM - General/Data/prism_monthly average ppt_30yr.shp")
@@ -209,24 +213,33 @@ names(monStack) <- c("ppt_mon", "tmax_mon", "tmin_mon")
 climStack <- stack(annStack, monStack)
 climStack@layers
 plot(climStack)
-## change CRS 
 
-projection(climStack) <- "+proj=utm +zone=11 +datum=WGS84 +ellps=WGS84 +towgs84=0,0,0"
-crs(climStack)
 ## save out
 
 writeRaster(climStack, "ignore/00_clim_raster_stack.grd", format="raster", crs="+proj=utm +zone=11 +datum=WGS84 +ellps=WGS84 +towgs84=0,0,0", overwrite=TRUE)
 
+## upload
+climStack <- stack("ignore/00_clim_raster_stack.grd")
 
+## change CRS 
+
+projection(climStack) <- "+proj=geocent +ellps=GRS80 +units=m +no_defs"
+crs(climStack)
+
+climStack
 ## get coords and comids, change crs
 orig_grids <- data2 %>%
   dplyr::select(ID.2, X, Y, COMID) %>%
   st_as_sf(coords=c("X", "Y"), crs=32611, remove=F) %>%
   st_transform(crs=9001)
 
+crs(climStack)
+crs(orig_grids)
+
 ## extract raster values at grids
-clim_Orig <- raster::extract(climStack, orig_grids)
-head(clim_Orig) ### all NAs!!!!
+clim_Orig <- cbind(data_red, raster::extract(climStack, orig_grids))
+head(clim_Orig) ### climate plus original data
+clim_Orig ## some values missing
 
 
 save(clim_Orig, file = "ignore/00a_new_clim_orig_env.Rdata")
@@ -256,55 +269,24 @@ head(nhd_points_rb9)
 sept <- brick("/Users/katieirving/Library/Mobile Documents/com~apple~CloudDocs/Documents/Documents - Katie’s MacBook Pro/git/Arroyo_toad_RB9_V2/ignore/TC_2014_RB9/TC_092014_RB9.tif")
 sept ## is 30m grids, is extract ok? Mike uses Median (Med) and Variance (Var) within analysis pixel
 
-## extract raster values
-sept_values <- raster::extract(sept, orig_grids)
+
+## change CRS
+projection(sept) <- " +proj=utm +zone=11 +datum=WGS84 +units=m +no_defs"
+## extract raster values in only 1-3 raster, bind to other data
+sept_values <- cbind(clim_Orig, raster::extract(sept[[1:3]], orig_grids))
 head(sept_values)
-sept_values_coord <- cbind(sept_values[,1:3], orig_grids)
-head(sept_values_coord)
+
 ## upload wet season data
 april <- brick("/Users/katieirving/Library/Mobile Documents/com~apple~CloudDocs/Documents/Documents - Katie’s MacBook Pro/git/Arroyo_toad_RB9_V2/ignore/TC_2014_RB9/TC_042014_RB9.tif")
 # plot(april)
 
-## extract raster values
-apr_values <- raster::extract(april, orig_grids)
-# head(apr_values)
-
-## join with sept values
-tass_sp <- cbind(apr_values[,1:3], sept_values_coord)
+## change CRS
+projection(april) <- " +proj=utm +zone=11 +datum=WGS84 +units=m +no_defs"
+## extract raster values in only 1-3 raster, bind to other data
+tass_sp <- cbind(sept_values, raster::extract(april[[1:3]], orig_grids))
 head(tass_sp)
-dim(tass_sp)
 
-save(tass_sp, file = "ignore/00_tass_cap_all_sp.RData")
-
-#### summarise by comid - mean and variance
-
-## make longer and group by comid and variable
-
-tass_sp_long <- tass_sp %>%
-  pivot_longer(TC_042014_RB9.1:TC_092014_RB9.3, names_to = "Variable", values_to = "Value") %>%
-  group_by(COMID, Variable) %>% 
-  summarise(MeanVals = mean(Value), VarVals = var(Value)) ## calculations
-
-## make wider rename with mean/var in name
-
-## means
-tass_sp_means <- tass_sp_long %>%
-  mutate(VarNames = paste0(Variable, "_Var"), Variable = paste0(Variable, "_Mean")) %>%
-  pivot_wider(id_cols = "COMID", names_from = Variable, values_from = MeanVals) 
-
-## variance
-tass_sp_vars <- tass_sp_long %>%
-  mutate(VarNames = paste0(Variable, "_Var"), Variable = paste0(Variable, "_Mean")) %>%
-  pivot_wider(id_cols = "COMID", names_from = VarNames, values_from = VarVals) 
-
-## join together
-
-tass_all <- full_join(tass_sp_vars, tass_sp_means, by = "COMID" )
-
-head(tass_all)  
-
-save(tass_all, file="ignore/00a_remote_sensing_data_per_comid.RData")
-
+save(tass_sp, file = "ignore/00_tass_cap_climate_original_data.RData")
 
 
 # Add hydro ---------------------------------------------------------------
@@ -313,11 +295,13 @@ delta <- read.csv("/Users/katieirving/Library/Mobile Documents/com~apple~CloudDo
 head(delta)
 
 ## remove duplicates
-delta <- delta %>% distinct()
+delta_long <- delta %>% 
+  rename(FlowMetric = metric, MetricValue = abs_FFM_median_cfs, DeltaH = delta_FFM_median_cfs)
+  distinct()
 
-delta_long <- delta %>%
-  # select(comid region, year, flow_metric, deltah_cur_ref_final, deltaH_watercon_ref_final) %>%
-  pivot_longer(d_ds_dur_ws:d_wet_tim, names_to = "FlowMetric", values_to = "DeltaH")
+# delta_long <- delta %>%
+#   # select(comid region, year, flow_metric, deltah_cur_ref_final, deltaH_watercon_ref_final) %>%
+#   pivot_longer(d_ds_dur_ws:d_wet_tim, names_to = "FlowMetric", values_to = "DeltaH")
 
 head(delta_long)
 
@@ -333,101 +317,39 @@ head(delta_long)
 unique(delta_long$FlowMetric)
 
 delta_long <- delta_long %>%
-  filter(FlowMetric %in% c("d_fa_mag", "d_wet_bfl_mag_10", "d_ds_mag_90", "d_ds_mag_50")) %>%
-  mutate(hydro.endpoint = case_when(FlowMetric == "d_ds_mag_50" ~ "DS_Mag_50",
-                                    FlowMetric == "d_ds_mag_90" ~ "DS_Mag_90",
-                                    FlowMetric == "d_fa_mag" ~ "FA_Mag",
-                                    # FlowMetric == "d_peak_10" ~ "DS_Mag_50",
-                                    FlowMetric == "d_peak_2" ~ "Peak_2",
-                                    # FlowMetric == "d_peak_5" ~ "DS_Mag_50",
-                                    # FlowMetric == "sp_mag" ~ "SP_Mag",
-                                    FlowMetric == "d_wet_bfl_mag_10" ~ "Wet_BFL_Mag_10",
-                                    FlowMetric == "d_wet_bfl_mag_50" ~ "Wet_BFL_Mag_50")) 
+  # filter(FlowMetric %in% c("fa_mag", "wet_bfl_mag_10", "ds_mag_90", "ds_mag_50")) %>%
+  mutate(hydro.endpoint = case_when(FlowMetric == "ds_mag_50" ~ "DS_Mag_50",
+                                    FlowMetric == "ds_mag_90" ~ "DS_Mag_90",
+                                    FlowMetric == "fa_mag" ~ "FA_Mag",
+                                    FlowMetric == "peak_10" ~ "Peak_10",
+                                    FlowMetric == "peak_2" ~ "Peak_2",
+                                    FlowMetric == "peak_5" ~ "Peak_5",
+                                    FlowMetric == "sp_mag" ~ "SP_Mag",
+                                    FlowMetric == "wet_bfl_mag_10" ~ "Wet_BFL_Mag_10",
+                                    FlowMetric == "wet_bfl_mag_50" ~ "Wet_BFL_Mag_50")) 
 names(delta_long)
-## get median delta H 
+## get median delta H per comid (median of years)
 
 delta_med <- delta_long %>%
   group_by(comid, FlowMetric, hydro.endpoint) %>%
   summarise(MedDelta = median(DeltaH)) %>%
   ungroup() %>%
   rename(COMID = comid) %>%
-  dplyr::select(-FlowMetric) %>%
-  pivot_wider(names_from = hydro.endpoint, values_from = MedDelta)
-
+  dplyr::select(-FlowMetric)  %>%
+  pivot_wider(names_from = hydro.endpoint, values_from = MedDelta) %>% dplyr::select(COMID:Wet_BFL_Mag_50)
 
 head(delta_med)
-dim(delta_med)
-length(unique(delta_med$COMID))
-dim(data_sf)
-
-names(all_data)
-## join spatial sites
-
-data_sub <- data_sf %>%
-  dplyr::select(c(ID:Y, COMID))
-
-head(data_sub)
-
-data_hyd_sf <- right_join(data_sf, delta_med, by = "COMID") ## 209 reaches don't match
+## join with all data by comid
+data_hyd_sf <- right_join(tass_sp, delta_med, by = "COMID") ## 209 reaches don't match
 names(data_hyd_sf)
-head(data_sf)
+head(data_hyd_sf)
 
-length(unique(data_sub$COMID)) ## 3845
-length(unique(delta_med$COMID)) ## 2116
-length(unique(data_hyd_sf$COMID)) ## 2116
+length(unique(tass_sp$COMID)) ## 3845
+length(unique(delta_med$COMID)) ## 2117
+length(unique(data_hyd_sf$COMID)) ## 2117
 
-## scale to nhd reach
-data_hyd_sf_long <- data_hyd_sf %>%
-  pivot_longer(c(MRVBF.Mx:AvgSlope, DS_Mag_50:Wet_BFL_Mag_10), names_to = "Variable", values_to = "Value") %>%
-  group_by(COMID, Variable) %>%
-  mutate(Meanvals = mean(Value),
-         Minvals = min(Value),
-         Maxvals = max(Value))
-
-# save(data_hyd_sf_long, file="ignore/00_all_env_data_scaled.RData")
-head(data_hyd_sf_long)
-rm(data_hyd_sf_long)
-
-unique(data_hyd_sf_long$Variable)
-## elevation = min, catchment area = max, MRVBF = max, VRM1.Mn = min
-## format df
-data_hyd_sf_longer <- data_hyd_sf_long %>%
-  dplyr::select(-Value) %>%
-  pivot_longer(Meanvals:Maxvals, names_to= "Stat", values_to = "Values") %>%
-  pivot_wider(names_from = Variable, values_from = Values)
-
-head(data_hyd_sf_longer)
-names(data_hyd_sf_longer)
-str(data_hyd_sf_longer)
-
-## take specific stats for each variable
-meanVars <- data_hyd_sf_longer %>%
-  ungroup() %>%
-  filter(Stat == "Meanvals") %>%
-  dplyr::select(c(COMID,X81pptCr1:Wet_BFL_Mag_10)) %>%
-  distinct()
-
-
-MinVars <- data_hyd_sf_longer %>%
-  ungroup() %>%
-  filter(Stat == "Minvals") %>%
-  dplyr::select(c(COMID, DEM_10m.Mn, VRM1.Mn:VRM9.Mn))  %>%
-  distinct()
-
-MaxVars <- data_hyd_sf_longer %>%
-  ungroup() %>%
-  filter(Stat == "Maxvals") %>%
-  dplyr::select(c(COMID, Catchment.A, MRVBF.Mx))  %>%
-  distinct()
-
-## join toegther
-
-all_data <- bind_cols(meanVars, MinVars[,-1], MaxVars[-1])
-
-head(all_data)
-names(all_data)
 
 ## save out
 
-save(all_data, file = "ignore/00_all_env_bio_data_NHD_reach.RData")
+save(data_hyd_sf, file = "ignore/00_all_env_data_gridded.RData")
 
