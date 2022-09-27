@@ -95,35 +95,35 @@ st_crs(data_sf)
 ## create template raster
 
 ## dims etc from CurrentGridFeb14.grd
-
-x <- raster(ncol=701, nrow=649, xmn=423638.013766974, xmx=563838.013766974, ymn=3600402.14370233 , ymx=3730202.14370233)
-
-projection(x) <- "+proj=utm +zone=11 +datum=WGS84 +ellps=WGS84 +towgs84=0,0,0"
-x
-
-#Create a "rasterBrick" of the template raster
-x<-brick(x)
-
-x2 <- x
-
-#Create list of column names you want to rasterize
-fields <- names(data_sf) [5:17]
-fields
-## make rasters of each env var
-i
-for (i in fields){
-  x[[i]]<-rasterize(data_sf, x, field=i)
-  projection(x)<-"+proj=utm +zone=11 +datum=WGS84"
-  x <- stack(x)
-}
-
-x@layers
-# x2[[i]]
-
-plot(x[[2]]) ## to check
-x
-## save out
-writeRaster(x, "ignore/00_raw_original_data_raster.grd", format="raster", crs="+proj=utm +zone=11 +datum=WGS84", overwrite=TRUE)
+# 
+# x <- raster(ncol=701, nrow=649, xmn=423638.013766974, xmx=563838.013766974, ymn=3600402.14370233 , ymx=3730202.14370233)
+# 
+# projection(x) <- "+proj=utm +zone=11 +datum=WGS84 +ellps=WGS84 +towgs84=0,0,0"
+# x
+# 
+# #Create a "rasterBrick" of the template raster
+# x<-brick(x)
+# 
+# x2 <- x
+# 
+# #Create list of column names you want to rasterize
+# fields <- names(data_sf) [5:17]
+# fields
+# ## make rasters of each env var
+# i
+# for (i in fields){
+#   x[[i]]<-rasterize(data_sf, x, field=i)
+#   projection(x)<-"+proj=utm +zone=11 +datum=WGS84"
+#   x <- stack(x)
+# }
+# 
+# x@layers
+# # x2[[i]]
+# 
+# plot(x[[2]]) ## to check
+# x
+# ## save out
+# writeRaster(x, "ignore/00_raw_original_data_raster.grd", format="raster", crs="+proj=utm +zone=11 +datum=WGS84", overwrite=TRUE)
 
 
 # Format Climate data -------------------------------------------------
@@ -352,4 +352,46 @@ length(unique(data_hyd_sf$COMID)) ## 2117
 ## save out
 
 save(data_hyd_sf, file = "ignore/00_all_env_data_gridded.RData")
+load(file = "ignore/00_all_env_data_gridded.RData")
+
+# Create rasters ----------------------------------------------------------
+
+## format shape file
+
+data_sf <- na.omit(data_hyd_sf) %>%
+  dplyr::select(ID.2, X, Y, COMID, MRVBF.Mx:AvgSlope, ppt_ann:Wet_BFL_Mag_50) #%>%
+
+## make spatial and transformCRS
+coordinates(data_sf) <- ~X+Y
+
+projection(data_sf) <- "+proj=geocent +ellps=GRS80 +units=m +no_defs"
+## create template raster
+
+## dims etc from CurrentGridFeb14.grd
+
+x <- raster(ncol=701, nrow=649, xmn=423638.013766974, xmx=563838.013766974, ymn=3600402.14370233 , ymx=3730202.14370233)
+
+projection(x) <- "+proj=geocent +ellps=GRS80 +units=m +no_defs"
+crs(x)
+
+#Create list of column names you want to rasterize
+fields <- names(data_sf) [3:36]
+fields
+## make rasters of each env var
+
+for (i in fields){
+  x[[i]]<-raster::rasterize(data_sf, x, field=i, na.rm =TRUE, sp = TRUE)
+  projection(x)<-"+proj=geocent +ellps=GRS80 +units=m +no_defs"
+  x <- stack(x)
+}
+x
+# names(x)[1:i] <- fields[1:i]
+x@layers
+
+
+plot(x[[2]]) ## to check
+x
+## save out
+writeRaster(x, "ignore/00_raw_new_data_raster.grd", format="raster", crs="+proj=geocent +ellps=GRS80 +units=m +no_defs", overwrite=TRUE)
+
 

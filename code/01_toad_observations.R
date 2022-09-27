@@ -16,17 +16,6 @@ library(RStoolbox)
 setwd("/Users/katieirving/Documents/Documents - Katie’s MacBook Pro/git/Arroyo_toad_RB9_V2")
 getwd()
 
-# original data ------------------------------------------------------------
-path <- "ignore/FullData/"
-
-## raw data - env vars with presence absence
-load(file = "ignore/00_all_env_bio_data_NHD_reach.RData") ## all_data - _abs_hydro
-head(all_data)
-length(unique(all_data$COMID))
-# data <- read.csv(paste0(path, "200mCells_FullData_PresAbs_Complete_ThinnedCols.csv"))
-# head(data)
-# str(data$ID.2)
-
 
 # USGS observation data ----------------------------------------------------
 
@@ -272,9 +261,52 @@ save(bio_data4, file = "ignore/01_chad_bio_data_COMIDs.RData")
 load(file = "ignore/01_chad_bio_data_COMIDs.RData") # bio_data4
 
 
+
+# add Mike's observations -------------------------------------------------
+
+## add in Mikes observations, remove any that are duplicated
+
+# original pres/abs
+inshape="original_model/Current/randomForests/PARTITIONING/DATA3/200mCells_PresAbs2005 PCA PresAbs Pts_MLT.shp" ## presence absence
+## format
+all_data_obs <- st_read(inshape) %>%
+  mutate(Longitude = unlist(map(geometry,1)),
+         Latitude = unlist(map(geometry,2))) %>%
+  mutate(ID = 1:length(geometry)) %>%
+  mutate(ID = paste0("M", ID)) ## p/a
+
+head(all_data_obs)
+
+# Create dataframe for looking up COMIDS (here use all stations)
+data_segs <- all_data_obs %>%
+  dplyr::select(ID, Latitude,Longitude) %>%
+  distinct(ID, Latitude,Longitude) %>% 
+  st_as_sf(coords=c("Longitude", "Latitude"), crs=32611, remove=F) %>%
+  # st_transform(crs=32611) %>%
+  arrange(ID)
+
+# use nhdtools to get comids
+data_all_coms <- data_segs %>%
+  group_split(ID) %>%
+  set_names(., data_segs$ID) %>%
+  map(~discover_nhdplus_id(.x$geometry))
+
+# flatten into single dataframe instead of list
+data_segs_df <-data_all_coms %>% flatten_dfc() %>% t() %>%
+  as.data.frame() %>%
+  rename("COMID"=V1) %>% rownames_to_column(var = "ID") 
+
+
+bio_data0 <- full_join(all_data_obs, data_segs_df, by = "ID")
+object.size(bio_data0)
+
+length(unique(bio_data0$COMID)) ## 218
+
+save(bio_data0, file = "ignore/01_original_bio_data_COMIDs.RData")
+
 # Join all presence/absence together (points) ---------------------------------------------
 
-head(bio_data2)
+head(bio_data0)
 
 ## format: selected columns, make life stage counts long, 
 unique(bio$Count)
@@ -285,12 +317,14 @@ bio <- bio_data2 %>%
   rename(Latitude = StartLat, Longitude = StartLong) %>%
   pivot_longer(BUMIcount, names_to = "LifeStage", values_to = "Count") %>%
   mutate(PresAbs = ifelse(Count < 1, 0, 1), Year = paste0("20", Year)) %>%
+  filter(Year >= 2000) %>%
   distinct()
 
 ## other
 bio1 <- bio_data3 %>%
   dplyr::select(COMID, Latitude, Longitude, ID, Year) %>%
   mutate(LifeStage = "ALL", PresAbs = 1) %>%
+  filter(Year >= 2000) %>%
   distinct()
 
 ## Chad
@@ -298,17 +332,23 @@ bio2 <- bio_data4 %>%
   dplyr::select(COMID, Latitude, Longitude, ID, Age, Year) %>%
   rename(LifeStage = Age) %>%
   mutate(PresAbs = 1, Year = as.character(Year)) %>%
+  filter(Year >= 2000) %>%
   distinct()
 
-
+bio3 <- bio_data0 %>%
+  dplyr::select(COMID, Latitude, Longitude, ID, PresAbs200) %>%
+  mutate( Year = NA,LifeStage = "ALL" ) %>%
+  rename(PresAbs = PresAbs200) %>%
+  distinct()
+  
 ## join together
 
-bio_points <- bind_rows(bio, bio1, bio2) %>% distinct()
+bio_points <- bind_rows(bio, bio1, bio2, bio3) %>% distinct()
 
-dim(bio_points) ## 4558 - unique points
-length(unique(bio_points$COMID)) ## 541 - unique comid
-subs <- bio_points %>% filter(Year >= 2000) 
-length(unique(subs$COMID)) ## 485 2000-2014
+dim(bio_points) ## 5130 - unique points
+length(unique(bio_points$COMID)) ## 534 - unique comid
+# subs <- bio_points %>% filter(Year >= 2000) 
+# length(unique(subs$COMID)) ## 485 2000-2014
 
 ## map points
 
@@ -322,9 +362,9 @@ mapviewOptions(basemaps=basemapsList, fgb = FALSE)
 
 ## plot points
 m1 <- mapview(bio_points, cex=6, col.regions="orange",
-              layer.name="Toad Observations") +
-mapview(subs, cex=6, col.regions="blue",
-        layer.name="Toad Observations > 2000")
+              layer.name="Toad Observations") #+
+  # mapview(subs, cex=6, col.regions="blue",
+  #         layer.name="Toad Observations > 2000")
 
 
 m1
@@ -333,120 +373,4 @@ m1@map %>% leaflet::addMeasure(primaryLengthUnit = "meters")
 ## save out
 
 st_write(bio_points, "ignore/01_toad_obs_points_RB9.shp", append=FALSE)
-
-# Join all presence/absence together (COMID) ------------------------------
-
-## remove pre 2000 if needed**
-
-## make sure if reach has at least one presence then keeps it, if none then absence
-bio_coms <- bio %>%
-  as.data.frame() %>%
-  group_by(COMID, LifeStage) %>% 
-  summarise(PresAbs = max(PresAbs)) %>%
-  filter(LifeStage == "BUMIcount") %>%
-  drop_na() %>%
-  mutate(LifeStage = "ALL")
-
-head(bio_coms)
-dim(bio_coms) ## 318
-
-unique(bio$PresAbs)
-
-## format other observations
-head(bio_data3)
-
-bio1_coms <- bio_data3 %>%
-  as.data.frame() %>%
-  dplyr::select(COMID) %>%
-  mutate(LifeStage = "ALL", PresAbs = 1) %>%
-  distinct(COMID, .keep_all = T)
-?distinct
-bio1_coms
-bio
-
-head(bio_data4)
-## Chad data
-bio2_coms <- bio_data4 %>%
-  as.data.frame() %>%
-  dplyr::select(COMID, Age) %>%
-  rename(LifeStage = Age) %>%
-  mutate(PresAbs = 1) %>%
-  distinct(COMID, .keep_all = T)
-
-# join obs together
-
-bioAll <- bind_rows(bio_coms, bio1_coms, bio2_coms) %>% distinct()
-bioAll
-
-sum(bioAll$PresAbs ==1)
-sum(bioAll$PresAbs ==0)
-
-# plot comids -------------------------------------------------------------
-
-nhd <- st_read("/Users/katieirving/SCCWRP/SD Hydro Vulnerability Assessment - General/Data/SpatialData/NHDplus_RB9.shp")
-# nhd <- st_read("/Users/katieirving/SCCWRP/SD Hydro Vulnerability Assessment - General/Data/SpatialData/SD_RB9_boundary.shp")
-
-head(nhd)
-obs <- bioAll %>%
-  dplyr::select(COMID)
-
-nhd_lines_rb9 <- nhd %>%
-  dplyr::select(SHAPE_LENG, COMID) %>%
-  # filter(COMID %in% all_data$COMID) %>% ## subset to orginial data with RB9 extent
-  mutate(COMID = as.integer(COMID))
-
-nhd_lines_rb9
-
-dim(nhd_lines_rb9)
-str(nhd_lines_rb9)
-
-# nhd_lines_prob <- full_join(nhd_lines_rb9, pred_df, by = "COMID")
-nhd_lines_rb9 <- st_zm(nhd_lines_rb9)
-
-## join in obs
-
-nhd_lines_obs <- right_join(nhd_lines_rb9, bioAll, by = "COMID")
-nhd_lines_obs <- st_zm(nhd_lines_obs) %>% mutate(nhd_lines_obs, PresAbs = as.factor(PresAbs)) #%>%
-drop_na(Shape_Leng)
-dim(nhd_lines_obs)
-
-
-# library(viridis)
-map1 <- ggplot() +
-  geom_sf(data = nhd_lines_rb9) +
-  geom_sf(data = nhd_lines_obs, aes(colour =PresAbs))
-# scale_fill_gradientn(colours=rev(magma(6))) ## colours not working
-
-map1
-
-file.name1 <- "/Users/katieirving/Documents/Documents - Katie’s MacBook Pro/git/Arroyo_toad_RB9_V2/Figures/01_rb9_map.jpg"
-# ggsave(map1, filename=file.name1, dpi=300, height=5, width=6)
-
-
-
-# add Mike's observations -------------------------------------------------
-
-## this is a quick fix for now, will need to be fixed
-
-## bio comids
-load(file= "ignore/01_all_env_bio_data_NHD_reach_original.RData") ## all_data_obs
-head(all_data_obs)
-names(all_data_obs)
-
-orig_obs <- all_data_obs %>%
-  dplyr::select(COMID, PresAbs200)
-
-head(orig_obs)
-
-unique(orig_obs$COMID)
-
-## join with new obs
-
-DataObs <- full_join(orig_obs, bioAll, by = "COMID") %>% dplyr::select(-LifeStage) %>%
-  mutate(NewObs = ifelse(is.na(PresAbs), PresAbs200, PresAbs)) %>% ## use new presences, if NA add old presence/absences 
-  dplyr::select(COMID, NewObs)
-
-head(DataObs)
-
-length(unique(DataObs$COMID)) ## 550
 
