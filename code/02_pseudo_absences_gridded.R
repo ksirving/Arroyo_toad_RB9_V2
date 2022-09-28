@@ -51,6 +51,8 @@ head(sdata)
 
 projection(sdata)<-"+proj=utm +zone=11 +datum=WGS84"
 projection(orig.sdata)<-"+proj=utm +zone=11 +datum=WGS84"
+crs(sdata)
+
 
 
 # Physical data -----------------------------------------------------------
@@ -60,6 +62,48 @@ getwd()
 xvars <- stack("ignore/00_raw_new_data_raster.grd") ## new raster @ 200m - change as needed
 # xvars <- xvars[[2:97]] ## remove template raster
 crs(xvars)
+
+
+# Snap occurrence to stream grids -----------------------------------------
+
+## snap points within a 50m buffer
+
+library('devtools')
+install_github("mtalluto/WatershedTools")
+library("WatershedTools")
+library(geosphere)
+?extract
+
+xvars1 <- xvars[[1]]
+xvars1
+crs(xvars1) <- "+proj=utm +zone=11 +datum=NAD83"
+crs(xvars1)
+writeRaster(xvars1, "ignore/02_mask_raster_network.tif", format="GTiff", overwrite=T)
+?writeRaster
+plot(xvars1)
+plot(sdata, add=T)
+
+xvarPts <- rasterToPoints(xvars1)
+xvarPts <- xvarPts %>%
+  as.data.frame() %>%
+  st_as_sf(coords=c("x", "y"), crs=9001, remove=F) 
+
+snap_data <- sdata %>%
+  as.data.frame() %>%
+  st_as_sf(coords=c("Longitude", "Latitude"), crs=4326, remove=F) %>%
+  st_transform(crs = 3310)
+
+st_write(snap_data, "ignore/02_01_toad_obs_points_RB9_3310.shp", append = F)
+?st_join
+test1 <- st_join(xvarPts, snap_data)
+test1
+head(snap_data)
+dim(snap_data)
+dim(xvarPts)
+test <- raster::extract(xvars1, sdata)
+test
+sum(is.na(test))
+
 # KDE Bias Surface --------------------------------------------------------
 set.seed(234)
 
@@ -144,15 +188,9 @@ sdata<-bind_rows(sdata,a.spdf)
 
 ## save as spatial object
 st_write(sdata, "ignore/02_pseudo_abs.shp", append = F) ## pseudo_abs
-
+class(sdata)
 
 # Add to env data ---------------------------------------------------------
-
-## snap points within a 50m buffer
-
-library('devtools')
-install_github("mtalluto/WatershedTools")
-mask
 
 ?st_write
 load(file= "ignore/00_all_env_bio_data.RData")
