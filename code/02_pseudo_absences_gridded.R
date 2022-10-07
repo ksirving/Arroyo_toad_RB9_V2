@@ -18,6 +18,8 @@ library(sm)
 library(sf)
 library(caret)
 
+getwd()
+
 ## workflow
 # upload original and new observations
 ## snap new obs within 50m buffer
@@ -44,6 +46,9 @@ inshape="ignore/01_toad_obs_points_RB9.shp" ## presence absence
 class(sdata)
 orig.sdata<- sdata <- shapefile(inshape) ## p/a
 
+inshape2 = "output_data/ToadsObs_50m_Final.shp"
+orig.sdata<- sdata <- shapefile(inshape2) ## p/a
+
 head(sdata)
 
 # NUMBER OF BOOTSTRAP REPLICATES
@@ -67,6 +72,10 @@ crs(xvars)
 # Snap occurrence to stream grids -----------------------------------------
 
 ## snap points within a 50m buffer
+
+# done in GIS 
+
+bioSnap <- st_read("/output_data/ToadsObs_50m_Final.shp")
 
 library('devtools')
 install_github("mtalluto/WatershedTools")
@@ -94,15 +103,7 @@ snap_data <- sdata %>%
   st_transform(crs = 3310)
 
 st_write(snap_data, "ignore/02_01_toad_obs_points_RB9_3310.shp", append = F)
-?st_join
-test1 <- st_join(xvarPts, snap_data)
-test1
-head(snap_data)
-dim(snap_data)
-dim(xvarPts)
-test <- raster::extract(xvars1, sdata)
-test
-sum(is.na(test))
+
 
 # KDE Bias Surface --------------------------------------------------------
 set.seed(234)
