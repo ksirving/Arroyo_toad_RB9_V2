@@ -60,7 +60,7 @@ orig.sdata<- sdata <- shapefile(inshape) ## p/a
 # str(sdata@data)
 proj4string(sdata)<-CRS("+proj=utm +zone=11 +datum=WGS84")
 proj4string(orig.sdata)<-CRS("+proj=utm +zone=11 +datum=WGS84")
-orig.sdata
+head(orig.sdata)
 #sdata <- sdata[1]
 # str(sdata)
 proj4string(sdata)<-CRS("+proj=utm +zone=11 +datum=WGS84")

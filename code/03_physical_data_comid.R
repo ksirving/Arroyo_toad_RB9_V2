@@ -177,6 +177,125 @@ file.name1 <- "/Users/katieirving/Documents/Documents - Katie’s MacBook Pro/gi
 
 
 
+load(file= "ignore/00_all_env_bio_data.RData")
+## make spatial
+
+data_sf<- data2 %>%
+  dplyr::select(-PresAbs2005, -Presence2) %>%
+  st_as_sf(coords=c("X", "Y"), crs=32611, remove=F) 
+
+head(data_sf)
+
+## map
+
+# set background basemaps:
+# basemapsList <- c("Esri.WorldTopoMap", "Esri.WorldImagery",
+#                   "Esri.NatGeoWorldMap",
+#                   "OpenTopoMap", "OpenStreetMap", 
+#                   "CartoDB.Positron", "Stamen.TopOSMFeatures")
+# 
+# mapviewOptions(basemaps=basemapsList, fgb = FALSE)
+# 
+# m1 <- mapview(data_segs, cex=6, col.regions="orange",
+#               layer.name="data points") 
+# 
+# m1
+# m1@map %>% leaflet::addMeasure(primaryLengthUnit = "meters")
+
+## save as shape
+
+st_write(data_sf, "ignore/00_all_env_bio_data.shp", append=FALSE) ## not working??
+# 
+# check <- st_read("output_data/00_all_env_bio_data.shp")
+# plot(check)()
+data_sf<- st_read("ignore/00_all_env_bio_data.shp")
+data_sf
+dim(data_sf)
+class(data_sf)
+
+## make long and get mean value per comid
+
+# data_hyd_sf_long <- data_sf %>%
+#   pivot_longer(MRVBF.Mx:AvgSlope, names_to = "Variable", values_to = "Value") %>%
+#   group_by(COMID, Variable) %>%
+#   mutate(Meanvals = mean(Value),
+#             Minvals = min(Value),
+#             Maxvals = max(Value))
+#   
+#   save(data_hyd_sf_long, file="ignore/00_all_env_data_scaled.RData")
+#   head(data_hyd_sf_long)
+#   rm(data_hyd_sf_long)
+#   
+#   unique(data_hyd_sf_long$Variable)
+#   ## elevation = min, catchment area = max, MRVBF = max, VRM1.Mn = min
+#   
+#   ## format df 
+#   data_hyd_sf_longer <- data_hyd_sf_long %>%
+#     pivot_longer(Meanvals:Maxvals, names_to= "Stat", values_to = "Values") %>%
+#     pivot_wider(names_from = Variable, values_from = Values)
+#   
+#   head(data_hyd_sf_longer)
+#   names(data_hyd_sf_longer)
+#   ## take specific stats for each variable
+#   meanVars <- data_hyd_sf_longer %>%
+#     filter(Stat == "Meanvals") %>%
+#     dplyr::select(c(COMID:AvgWaterSt, FINAL...01..3:FINAL...24..4, X81pptCr1:X81TMxCr9))
+#   
+#   
+#   MinVars <- data_hyd_sf_longer %>%
+#     filter(Stat == "Minvals") %>%
+#     dplyr::select(c(COMID, DEM_10m.Mn, VRM1.Mn:VRM9.Mn))
+#   
+#   MaxVars <- data_hyd_sf_longer %>%
+#     filter(Stat == "Maxvals") %>%
+#     dplyr::select(c(COMID, Catchment.A, MRVBF.Mx))
+#   
+#   ## join toegther
+#   
+#   all_data <- bind_cols(meanVars, MinVars, MaxVars)
+#   
+#   head(all_data)
+#   names(all_data)
+#   
+#   all_data <- all_data %>%
+#     dplyr::select(-COMID...92, -COMID...99, -Stat) %>%
+#     rename(COMID = COMID...1)
+
+# Convert to raster -------------------------------------------------------
+
+## create template raster
+
+## dims etc from CurrentGridFeb14.grd
+
+
+x <- raster(ncol=701, nrow=649, xmn=423638.013766974, xmx=563838.013766974, ymn=3600402.14370233 , ymx=3730202.14370233)
+
+projection(x) <- "+proj=utm +zone=11 +datum=WGS84 +ellps=WGS84 +towgs84=0,0,0"
+x
+
+#Create a "rasterBrick" of the template raster
+x<-brick(x)
+
+x2 <- x
+
+#Create list of column names you want to rasterize
+fields <- names(data_sf) [5:100]
+fields
+## make rasters of each env var
+i
+for (i in fields){
+  x[[i]]<-rasterize(data_sf, x, field=i)
+  projection(x)<-"+proj=utm +zone=11 +datum=WGS84"
+  x <- stack(x)
+}
+
+x@layers
+x2[[i]]
+
+plot(x[[2]]) ## to check
+x
+## save out
+writeRaster(x, "ignore/00_raw_data_raster.grd", format="raster", crs="+proj=utm +zone=11 +datum=WGS84", overwrite=TRUE)
 
 
 

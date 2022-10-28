@@ -18,7 +18,7 @@ library(caret)
 setwd("/Users/katieirving/Documents/Documents - Katie’s MacBook Pro/git/Arroyo_toad_RB9_V2")
 
 ## upload data
-
+head(NewDataObs)
 load(file =  "ignore/00a_data_for_model_abs_flow.RData") # NewDataObsSub - for model build
 load(file =  "ignore/00a_data_for_prediction_abs_flow.RData") #NewDataObs - for prediction
 

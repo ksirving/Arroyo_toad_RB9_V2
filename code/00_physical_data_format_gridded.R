@@ -266,9 +266,8 @@ head(nhd_points_rb9)
 
 # Remote Sensing data -----------------------------------------------------
 
-sept <- brick("/Users/katieirving/Library/Mobile Documents/com~apple~CloudDocs/Documents/Documents - Katie’s MacBook Pro/git/Arroyo_toad_RB9_V2/ignore/TC_2014_RB9/TC_092014_RB9.tif")
+sept <- brick("/Users/katieirving/OneDrive - SCCWRP/Documents - Katie’s MacBook Pro/git/Arroyo_toad_RB9_V2/ignore/TC_2014_RB9/TC_092014_RB9.tif")
 sept ## is 30m grids, is extract ok? Mike uses Median (Med) and Variance (Var) within analysis pixel
-
 
 ## change CRS
 projection(sept) <- " +proj=utm +zone=11 +datum=WGS84 +units=m +no_defs"
@@ -291,7 +290,7 @@ save(tass_sp, file = "ignore/00_tass_cap_climate_original_data.RData")
 
 # Add hydro ---------------------------------------------------------------
 
-delta <- read.csv("/Users/katieirving/Library/Mobile Documents/com~apple~CloudDocs/Documents/Documents - Katie’s MacBook Pro/git/Arroyo_toad_RB9_V2/ignore/2022-07-28_predicted_abs_FFM_deltaFFM_SD_COMIDS_medianDelta_test5_norunoff.csv")
+delta <- read.csv("/Users/katieirving/OneDrive - SCCWRP/Documents - Katie’s MacBook Pro/git/Arroyo_toad_RB9_V2/ignore/2022-07-28_predicted_abs_FFM_deltaFFM_SD_COMIDS_medianDelta_test5_norunoff.csv")
 head(delta)
 
 ## remove duplicates
@@ -392,6 +391,6 @@ x@layers
 plot(x[[2]]) ## to check
 x
 ## save out
-writeRaster(x, "ignore/00_raw_new_data_raster.grd", format="raster", crs="+proj=geocent +ellps=GRS80 +units=m +no_defs", overwrite=TRUE)
+writeRaster(x, "ignore/00_raw_new_data_raster.tif", format="GTiff", crs="+proj=geocent +ellps=GRS80 +units=m +no_defs", overwrite=TRUE)
 
 
