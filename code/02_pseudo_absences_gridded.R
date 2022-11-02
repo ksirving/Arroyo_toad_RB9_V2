@@ -44,7 +44,7 @@ crs(xvars)
 
 # Bio data ----------------------------------------------------------------
 
-### add all pres/abs together on previous script, then use that one. currently using original to get the code
+### add all pres/abs together on previous script, then use that one - snapped. 
 ## get path for functions
 source("original_model/Current/randomForests/PARTITIONING/DATA3/Functions.R")
 
@@ -89,6 +89,7 @@ crs(rmask)
 # plot(rmask)
 # plot(bioSnap, add=T)
 
+## get coordinates of snapped points
 bioSnapCds <- bioSnap %>% as.data.frame() %>%
   dplyr::select(ID, COMID, Year:PresAbs, centroid_x, centroid_y) %>%
   st_as_sf(coords=c("centroid_x", "centroid_y"), crs=4326, remove=F) %>%
@@ -206,31 +207,39 @@ class(sdata)
 ## read in stack created in 00
 xvars <- stack("ignore/00_raw_new_data_raster.tif") ## new rasters @ 200m - change as needed
 xvars
-crs(xvars)
+crs(xvars) ## need names here!
+crs(xvars) <- "+proj=utm +zone=11 +datum=NAD83"
 
+## get coordinates of snapped points, change NAs in lifestage so csn drop all nas from DF
+bioData <- sdata %>% as.data.frame() %>%
+  dplyr::select(ID, COMID, Year:PresAbs, centroid_x, centroid_y) %>%
+  st_as_sf(coords=c("centroid_x", "centroid_y"), crs=4326, remove=F) %>%
+  st_transform(crs = 9001) %>%
+  mutate(LifeStage = ifelse(is.na(LifeStage), "Other", LifeStage)) %>%
+  drop_na()
 
-## select coord and pres/abs from bio
-bioData <- sdata %>%
-  st_transform(crs=9001) %>%
-  dplyr::select(ID, COMID, Year:PresAbs, centroid_x, centroid_y)
+## remove z dimension
+bioData <- st_zm(bioData)
 
+head(bioData)
 ## get raster values at pres/abs sites 
 cellsPres <- raster::extract(xvars,bioData, cellnumbers=TRUE)
+cellsPres
 
-cellsPres<- na.omit(cellsPres)
-## remove z dimension
-bioSnapCds <- st_zm(bioSnapCds)
+## join together
 
-## change CRS to save, change back to 9001 on upload
-bioSnapCds <- bioSnap %>% 
-  st_as_sf(coords=c("centroid_x", "centroid_y"), crs=9001, remove=F) %>%
-  st_transform(crs = 3310) %>% dplyr::select(PresAbs, centroid_x, centroid_y)
+NewDataObsSub <- cbind(bioData, cellsPres)
+head(NewDataObsSub)
+dim(NewDataObsSub) ## 2797
 
-## save out
-st_write(bioSnapCds, "output_data/ToadsObs_50m_Final_snapped_coords.shp", append=FALSE) ## check in QGIS
+## save data for model 
+save(NewDataObsSub, file = "ignore/02_all_data_for_model_gridded.RData")
 
+## save data for prediction
 
+NewDataObs <- as.data.frame(xvars, xy=T) ## save as df with coords
+## remove non values (NA)
+NewDataObs <- na.omit(NewDataObs)
+dim(NewDataObs) ## 17761
 
-## save as shape
-
-st_write(data_sf, "ignore/00_all_env_bio_data.shp", append=FALSE) ## not working??
+save(NewDataObs, file = "ignore/02_all_data_for_prediction_gridded.RData")

@@ -28,7 +28,7 @@ library(sf)
 library(tidyverse)
 library(mapview)
 
-setwd("/Users/katieirving/Documents/Documents - Katie’s MacBook Pro/git/Arroyo_toad_RB9_V2")
+# setwd("/Users/katieirving/Documents/Documents - Katie’s MacBook Pro/git/Arroyo_toad_RB9_V2")
 
 wsdir="original_model/Current/randomForests"
 
@@ -61,6 +61,7 @@ orig.sdata<- sdata <- shapefile(inshape) ## p/a
 proj4string(sdata)<-CRS("+proj=utm +zone=11 +datum=WGS84")
 proj4string(orig.sdata)<-CRS("+proj=utm +zone=11 +datum=WGS84")
 head(orig.sdata)
+class(orig.sdata)
 #sdata <- sdata[1]
 # str(sdata)
 proj4string(sdata)<-CRS("+proj=utm +zone=11 +datum=WGS84")
@@ -70,7 +71,7 @@ head(sdata)
 # Physical data -----------------------------------------------------------
 getwd()
 
-setwd("/Users/katieirving/Documents/Documents - Katie’s MacBook Pro/git/Arroyo_toad_RB9_V2")
+setwd("/Users/katieirving/OneDrive - SCCWRP/Documents - Katie’s MacBook Pro/git/Arroyo_toad_RB9_V2")
 ## read in stack created in 00
 xvars <- stack("ignore/00_raw_data_raster.grd")
 xvars <- xvars[[2:97]] ## remove template raster
@@ -82,9 +83,10 @@ set.seed(234)
 orig.sdata2<-subset(orig.sdata, PresAbs200==1)
 
 mask <- xvars[[1]]>-1000
-
+mask
+orig.sdata[,-1]
 bias <- cellFromXY(mask, orig.sdata[,-1])
-
+bias
 cells <- unique(sort(bias))
 
 kernelXY <- xyFromCell(mask, cells)
