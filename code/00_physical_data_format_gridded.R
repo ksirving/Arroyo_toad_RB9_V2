@@ -292,6 +292,7 @@ save(tass_sp, file = "ignore/00_tass_cap_climate_original_data.RData")
 
 delta <- read.csv("/Users/katieirving/OneDrive - SCCWRP/Documents - Katie’s MacBook Pro/git/Arroyo_toad_RB9_V2/ignore/2022-07-28_predicted_abs_FFM_deltaFFM_SD_COMIDS_medianDelta_test5_norunoff.csv")
 head(delta)
+unique(delta$wayr)
 
 ## remove duplicates
 delta_long <- delta %>% 
@@ -359,7 +360,7 @@ load(file = "ignore/00_all_env_data_gridded.RData")
 
 data_sf <- na.omit(data_hyd_sf) %>%
   dplyr::select(ID.2, X, Y, COMID, MRVBF.Mx:AvgSlope, ppt_ann:Wet_BFL_Mag_50) #%>%
-
+head(data_sf)
 ## make spatial and transformCRS
 coordinates(data_sf) <- ~X+Y
 
@@ -374,7 +375,7 @@ projection(x) <- "+proj=geocent +ellps=GRS80 +units=m +no_defs"
 crs(x)
 
 #Create list of column names you want to rasterize
-fields <- names(data_sf) [3:36]
+fields <- names(data_sf) [2:36]
 fields
 ## make rasters of each env var
 
@@ -387,6 +388,9 @@ x
 # names(x)[1:i] <- fields[1:i]
 x@layers
 
+## get layer names and save as object
+layerNames <- names(x)
+save(layerNames, file = "output_data/00_raster_layer_names.RData")
 
 plot(x[[2]]) ## to check
 x
