@@ -361,10 +361,13 @@ load(file = "ignore/00_all_env_data_gridded.RData")
 data_sf <- na.omit(data_hyd_sf) %>%
   dplyr::select(ID.2, X, Y, COMID, MRVBF.Mx:AvgSlope, ppt_ann:Wet_BFL_Mag_50) #%>%
 head(data_sf)
+
 ## make spatial and transformCRS
 coordinates(data_sf) <- ~X+Y
 
 projection(data_sf) <- "+proj=geocent +ellps=GRS80 +units=m +no_defs"
+crs(data_sf)
+class(data_sf)
 ## create template raster
 
 ## dims etc from CurrentGridFeb14.grd
