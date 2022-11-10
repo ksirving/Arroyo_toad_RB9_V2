@@ -23,9 +23,11 @@ library(mapview)
 library(stars)
 library(rgdal)
 library(rgeos)
+library(terra)
+library(zoo)
 
 
-# setwd("/Users/katieirving/Documents/Documents - Katie’s MacBook Pro/git/Arroyo_toad_RB9_V2")
+setwd("/Users/katieirving/OneDrive - SCCWRP/Documents - Katie’s MacBook Pro/git/Arroyo_toad_RB9_V2")
 getwd()
 
 # raw env data ------------------------------------------------------------
@@ -35,96 +37,34 @@ path <- "original_model/FullData/"
 data <- read.csv(paste0(path, "200mCells_FullData_PresAbs_Complete_ThinnedCols.csv"))
 head(data)
 
-# Get COMIDs --------------------------------------------------------------
-
-# Create dataframe for looking up COMIDS (here use all stations)
-data_segs <- data %>%
+## get coords change crs
+orig_grids <- data %>%
   dplyr::select(ID.2, X, Y) %>%
-  distinct(ID.2, X, Y) %>% 
   st_as_sf(coords=c("X", "Y"), crs=32611, remove=F) %>%
-  arrange(ID.2)
-
-head(data_segs)
-dim(data_segs)
-
-# use nhdtools to get comids
-data_all_coms <- data_segs %>%
-  group_split(ID.2) %>%
-  set_names(., data_segs$ID.2) %>%
-  map(~discover_nhdplus_id(.x$geometry))
-
-data_all_coms
-
-# flatten into single dataframe instead of list
-data_segs_df <-data_all_coms %>% flatten_dfc() %>% t() %>%
-  as.data.frame() %>%
-  rename("COMID"=V1) %>% rownames_to_column(var = "ID.2") %>%
-  mutate(ID.2 = as.integer(ID.2))
-head(data_segs_df)
-
-data2 <- full_join(data, data_segs_df, by = "ID.2")
-object.size(data2)
-
-save(data2, file= "ignore/00_original_env_bio_comids.RData")
-
-load(file= "ignore/00_original_env_bio_comids.RData") ## data2 
-head(data2)
+  st_transform(crs=9001)
 
 # Remove climate and remote sensing variables (updated below) -------------
 
 ## remove old climate data (also removed remote sensing)
 
-data_red <- data2 %>%
-  dplyr::select(-c(X81pptCr1:FINAL...24..4))
+data_red <- data %>%
+  dplyr::select(-c(X81pptCr1:FINAL...24..4, PresAbs2005, Presence2))
 
 head(data_red)
 
 ## make spatial, crs 4269 to match climate polygons
 data_sf<- data_red %>%
   dplyr::select(X,Y, ID.2) %>%
-  st_as_sf(coords=c("X", "Y"), crs=4269, remove=F) 
+  st_as_sf(coords=c("X", "Y"), crs=32611, remove=F) 
 
 head(data_sf)
 names(data_sf)
 
 st_crs(data_sf)
 
-# Convert to raster -------------------------------------------------------
-
-## make raster to extarct climate, hydro and remote sense data
-## create template raster
-
-## dims etc from CurrentGridFeb14.grd
-# 
-# x <- raster(ncol=701, nrow=649, xmn=423638.013766974, xmx=563838.013766974, ymn=3600402.14370233 , ymx=3730202.14370233)
-# 
-# projection(x) <- "+proj=utm +zone=11 +datum=WGS84 +ellps=WGS84 +towgs84=0,0,0"
-# x
-# 
-# #Create a "rasterBrick" of the template raster
-# x<-brick(x)
-# 
-# x2 <- x
-# 
-# #Create list of column names you want to rasterize
-# fields <- names(data_sf) [5:17]
-# fields
-# ## make rasters of each env var
-# i
-# for (i in fields){
-#   x[[i]]<-rasterize(data_sf, x, field=i)
-#   projection(x)<-"+proj=utm +zone=11 +datum=WGS84"
-#   x <- stack(x)
-# }
-# 
-# x@layers
-# # x2[[i]]
-# 
-# plot(x[[2]]) ## to check
-# x
-# ## save out
-# writeRaster(x, "ignore/00_raw_original_data_raster.grd", format="raster", crs="+proj=utm +zone=11 +datum=WGS84", overwrite=TRUE)
-
+## upload raster mask
+rmask <- raster("ignore/02_mask_raster_network.tif")
+crs(rmask)
 
 # Format Climate data -------------------------------------------------
 
@@ -134,7 +74,7 @@ projection(gridsR) <- "+proj=geocent +ellps=GRS80 +units=m +no_defs"
 res(gridsR)=c(800,800)
 
 gridsR ## use as template to extract point data
-plot(gridsR)
+# plot(gridsR)
 
 #### upload annual climate data
 
@@ -147,7 +87,8 @@ ppt_annSP <- spTransform(ppt_annSP, CRS("+proj=geocent +ellps=GRS80 +units=m +no
 
 ## create raster 
 ppt_annR <- rasterize(ppt_annSP, gridsR,  'ppt_annx',  na.rm =TRUE, sp = TRUE)
-ppt_annR
+class(ppt_annR)
+
 ## temperature ###
 tmax_ann <- st_read("/Users/katieirving/SCCWRP/PRISM - General/Data/prism_annual average tmax_30yr.shp") %>% 
   rename(tmax_annx = PRISM__)
@@ -170,50 +111,116 @@ tmin_annR <- rasterize(tmin_annSP, gridsR,  'tmin_annx',  na.rm =TRUE, sp = TRUE
 
 ## stack all together
 annStack <- stack(ppt_annR, tmax_annR, tmin_annR)
+
 ## name layers
 names(annStack) <- c("ppt_ann", "tmax_ann", "tmin_ann")
 
-annStack 
+## scale to 200m, takes value of original larger cell
+annStack200 <- disaggregate(annStack, 4)
+
+
 
 ## monthly data
 ppt_mon <- st_read("/Users/katieirving/SCCWRP/PRISM - General/Data/prism_monthly average ppt_30yr.shp")
+## pivot wider by month
+ppt_mon <- ppt_mon %>%
+  pivot_wider(names_from = "Month", values_from = "pptMonth")
+
 ## make spatial and transformCRS
 ppt_monSP <- as(ppt_mon, Class = "Spatial")
 ppt_monSP <- spTransform(ppt_monSP, CRS("+proj=geocent +ellps=GRS80 +units=m +no_defs"))
+
+#Create list of column names you want to rasterize
+fields <- names(ppt_monSP) 
+fields
+x <- gridsR
+
+## make rasters of each month
+for (i in fields){
+  x[[i]]<-raster::rasterize(ppt_monSP, x, field=i, na.rm =TRUE, sp = TRUE)
+  projection(x)<-"+proj=geocent +ellps=GRS80 +units=m +no_defs"
+  x <- stack(x)
+}
+
+x@layers ## check
+names(x) <- paste0("pptMon", names(x))
+## ppt mon stack
+ppt_monR <- x
+ppt_monR
+# plot(x[[2]]) ## to check
+
 ## create raster 
-ppt_monR <- rasterize(ppt_monSP, gridsR,  field = c('pptMonth','Month' ),  na.rm =TRUE, sp = TRUE)
+# ppt_monR <- rasterize(ppt_monSP, gridsR,  field = c('pptMonth','Month' ),  na.rm =TRUE, sp = TRUE)
 
 
+### temp
 tmax_mon <- st_read("/Users/katieirving/SCCWRP/PRISM - General/Data/prism_monthly average tmax_30yr.shp")
+## pivot wider by month
+tmax_mon <- tmax_mon %>%
+  pivot_wider(names_from = "Month", values_from = "tmaxMonth")
+
 ## make spatial and transformCRS
 tmax_monSP <- as(tmax_mon, Class = "Spatial")
 tmax_monSP <- spTransform(tmax_monSP, CRS("+proj=geocent +ellps=GRS80 +units=m +no_defs"))
 
-## create raster 
-tmax_monR <- rasterize(tmax_monSP, gridsR,  field = c('tmaxMonth','Month' ),  na.rm =TRUE, sp = TRUE)
+#Create list of column names you want to rasterize
+fields <- names(tmax_monSP) 
+fields
+x <- gridsR
 
+## make rasters of each env var
+for (i in fields){
+  x[[i]]<-raster::rasterize(tmax_monSP, x, field=i, na.rm =TRUE, sp = TRUE)
+  projection(x)<-"+proj=geocent +ellps=GRS80 +units=m +no_defs"
+  x <- stack(x)
+}
+
+x@layers ## check
+names(x) <- paste0("tmaxMon", names(x))
+
+## mon stack
+tmax_monR <- x
+tmax_monR
 
 tmin_mon <- st_read("/Users/katieirving/SCCWRP/PRISM - General/Data/prism_monthly average tmin_30yr.shp")
+## pivot wider by month
+tmin_mon <- tmin_mon %>%
+  pivot_wider(names_from = "Month", values_from = "tminMonth")
+
 ## make spatial and transformCRS
 tmin_monSP <- as(tmin_mon, Class = "Spatial")
 tmin_monSP <- spTransform(tmin_monSP, CRS("+proj=geocent +ellps=GRS80 +units=m +no_defs"))
-head(tmin_monSP)
-## create raster 
-tmin_monR <- rasterize(tmin_monSP, gridsR,  field = c('tminMonth','Month' ),  na.rm =TRUE, sp = TRUE)
-tmin_monR
-plot(tmin_monR)
+
+##Create list of column names you want to rasterize
+fields <- names(tmin_monSP) 
+fields
+x <- gridsR
+
+## make rasters of each month
+for (i in fields){
+  x[[i]]<-raster::rasterize(tmin_monSP, x, field=i, na.rm =TRUE, sp = TRUE)
+  projection(x)<-"+proj=geocent +ellps=GRS80 +units=m +no_defs"
+  x <- stack(x)
+}
+
+x@layers ## check
+names(x) <- paste0("tminMon", names(x))
+## mon stack
+tmin_monR <- x
 
 ## stack all together
 monStack <- stack(ppt_monR, tmax_monR, tmin_monR)
+monStack
 ## name layers
-names(monStack) <- c("ppt_mon", "tmax_mon", "tmin_mon")
+# names(monStack) <- c("ppt_mon", "tmax_mon", "tmin_mon")
 
+## scale to 200m, takes value of original larger cell
+monStack200 <- disaggregate(monStack, 4)
+monStack200
 ## join altogether
 
-climStack <- stack(annStack, monStack)
-climStack@layers
-plot(climStack)
-
+climStack <- stack(annStack200, monStack200)
+climStack
 ## save out
 
 writeRaster(climStack, "ignore/00_clim_raster_stack.grd", format="raster", crs="+proj=utm +zone=11 +datum=WGS84 +ellps=WGS84 +towgs84=0,0,0", overwrite=TRUE)
@@ -221,153 +228,96 @@ writeRaster(climStack, "ignore/00_clim_raster_stack.grd", format="raster", crs="
 ## upload
 climStack <- stack("ignore/00_clim_raster_stack.grd")
 
-## change CRS 
-
+## change crs
 projection(climStack) <- "+proj=geocent +ellps=GRS80 +units=m +no_defs"
-crs(climStack)
 
-climStack
-## get coords and comids, change crs
-orig_grids <- data2 %>%
-  dplyr::select(ID.2, X, Y, COMID) %>%
-  st_as_sf(coords=c("X", "Y"), crs=32611, remove=F) %>%
-  st_transform(crs=9001)
+clim_Origx <- cbind(data_red, raster::extract(climStack, orig_grids))
+dim(clim_Origx)
+names(clim_Origx)[18:56]
 
-crs(climStack)
-crs(orig_grids)
+## interpolate the NA values
 
-## extract raster values at grids
-clim_Orig <- cbind(data_red, raster::extract(climStack, orig_grids))
-head(clim_Orig) ### climate plus original data
-clim_Orig ## some values missing
+clim_Origx[18:56] <- na.approx(clim_Origx[18:56])
+## 226 missing values changed
 
+head(clim_Origx)
 
-save(clim_Orig, file = "ignore/00a_new_clim_orig_env.Rdata")
-load(file = "ignore/00a_new_clim_orig_env.Rdata")
-
-# RB9 NHD -----------------------------------------------------------------
-
-nhd <- st_read("/Users/katieirving/Library/Mobile Documents/com~apple~CloudDocs/Documents/Documents - Katie’s MacBook Pro/git/Cannabis_Eflows/ignore/NHDPlus_V2_Flowline_CA.shp")
-
-head(nhd)
-
-nhd_lines_rb9 <- nhd %>%
-  dplyr::select(Shape_Leng, COMID) %>%
-  # filter(COMID %in% pred_df$COMID) %>%
-  mutate(COMID = as.integer(COMID))
-
-## convert rb9 comids to points
-nhd_points_rb9 <- st_cast(nhd_lines_rb9, "POINT") %>% dplyr::select(-Shape_Leng) %>% st_zm()
-head(nhd_points_rb9)
-## check this!!!!!
-# Warning message:
-#   In st_cast.sf(nhd_lines_rb9, "POINT") :
-#   repeating attributes for all sub-geometries for which they may not be constant
+save(clim_Origx, file = "ignore/00_new_clim_orig_env_gridded.Rdata")
+load(file = "ignore/00_new_clim_orig_env_gridded.Rdata")
 
 # Remote Sensing data -----------------------------------------------------
+## create base raster
 
 sept <- brick("/Users/katieirving/OneDrive - SCCWRP/Documents - Katie’s MacBook Pro/git/Arroyo_toad_RB9_V2/ignore/TC_2014_RB9/TC_092014_RB9.tif")
 sept ## is 30m grids, is extract ok? Mike uses Median (Med) and Variance (Var) within analysis pixel
 
-## change CRS
-projection(sept) <- " +proj=utm +zone=11 +datum=WGS84 +units=m +no_defs"
+## aggregate to 180m by median
+sept180Med <- aggregate(sept, 6, fun = "median")
+names(sept180Med) <- paste0(names(sept180Med), "_Med")
+
+## aggregate to 180m by variance
+sept180Var <- aggregate(sept, 6, fun = "var")
+names(sept180Var) <- paste0(names(sept180Var), "_Var")
+
+## stack rasters
+sept180 <- stack(sept180Med, sept180Var)
+
+## match projection with mask raster
+crs(sept180)<-crs(rmask)
+
+## resample to mask layer (200m)
+septr <- resample(sept180, rmask, method = "bilinear")
+names(septr)
+
 ## extract raster values in only 1-3 raster, bind to other data
-sept_values <- cbind(clim_Orig, raster::extract(sept[[1:3]], orig_grids))
+sept_values <- cbind(clim_Origx, raster::extract(septr[[c(1:3, 7:9)]], orig_grids))
 head(sept_values)
 
 ## upload wet season data
-april <- brick("/Users/katieirving/Library/Mobile Documents/com~apple~CloudDocs/Documents/Documents - Katie’s MacBook Pro/git/Arroyo_toad_RB9_V2/ignore/TC_2014_RB9/TC_042014_RB9.tif")
+april <- brick("/Users/katieirving/OneDrive - SCCWRP/Documents - Katie’s MacBook Pro/git/Arroyo_toad_RB9_V2/ignore/TC_2014_RB9/TC_042014_RB9.tif")
 # plot(april)
 
-## change CRS
-projection(april) <- " +proj=utm +zone=11 +datum=WGS84 +units=m +no_defs"
+## aggregate to 180m by median
+april180Med <- aggregate(april, 6, fun = "median")
+names(april180Med) <- paste0(names(april180Med), "_Med")
+
+## aggregate to 180m by variance
+april180Var <- aggregate(april, 6, fun = "var")
+names(april180Var) <- paste0(names(april180Var), "_Var")
+
+## stack rasters
+april180 <- stack(april180Med, april180Var)
+
+## match projection with mask raster
+crs(april180)<-crs(rmask)
+
+## resample to mask layer (200m)
+aprilr <- resample(april180, rmask, method = "bilinear")
+names(aprilr)
+
 ## extract raster values in only 1-3 raster, bind to other data
-tass_sp <- cbind(sept_values, raster::extract(april[[1:3]], orig_grids))
+april_values <- cbind(clim_Orig, raster::extract(aprilr[[c(1:3, 7:9)]], orig_grids))
+head(april_values)
+## extract raster values in only 1-3 raster, bind to other data
+tass_sp <- cbind(sept_values, raster::extract(aprilr[[c(1:3, 7:9)]], orig_grids))
 head(tass_sp)
 
 save(tass_sp, file = "ignore/00_tass_cap_climate_original_data.RData")
+load(file = "ignore/00_tass_cap_climate_original_data.RData")
 
+head(tass_sp)
 
-# Add hydro ---------------------------------------------------------------
-
-delta <- read.csv("/Users/katieirving/OneDrive - SCCWRP/Documents - Katie’s MacBook Pro/git/Arroyo_toad_RB9_V2/ignore/2022-07-28_predicted_abs_FFM_deltaFFM_SD_COMIDS_medianDelta_test5_norunoff.csv")
-head(delta)
-unique(delta$wayr)
-
-## remove duplicates
-delta_long <- delta %>% 
-  rename(FlowMetric = metric, MetricValue = abs_FFM_median_cfs, DeltaH = delta_FFM_median_cfs)
-  distinct()
-
-# delta_long <- delta %>%
-#   # select(comid region, year, flow_metric, deltah_cur_ref_final, deltaH_watercon_ref_final) %>%
-#   pivot_longer(d_ds_dur_ws:d_wet_tim, names_to = "FlowMetric", values_to = "DeltaH")
-
-head(delta_long)
-
-## keep only high R2s
-# fa_mag
-# wet_bfl_mag_10
-# peak_10
-# ds_mag_90
-# peak_2
-# peak_5
-# ds_mag_50
-
-unique(delta_long$FlowMetric)
-
-delta_long <- delta_long %>%
-  # filter(FlowMetric %in% c("fa_mag", "wet_bfl_mag_10", "ds_mag_90", "ds_mag_50")) %>%
-  mutate(hydro.endpoint = case_when(FlowMetric == "ds_mag_50" ~ "DS_Mag_50",
-                                    FlowMetric == "ds_mag_90" ~ "DS_Mag_90",
-                                    FlowMetric == "fa_mag" ~ "FA_Mag",
-                                    FlowMetric == "peak_10" ~ "Peak_10",
-                                    FlowMetric == "peak_2" ~ "Peak_2",
-                                    FlowMetric == "peak_5" ~ "Peak_5",
-                                    FlowMetric == "sp_mag" ~ "SP_Mag",
-                                    FlowMetric == "wet_bfl_mag_10" ~ "Wet_BFL_Mag_10",
-                                    FlowMetric == "wet_bfl_mag_50" ~ "Wet_BFL_Mag_50")) 
-names(delta_long)
-## get median delta H per comid (median of years)
-
-delta_med <- delta_long %>%
-  group_by(comid, FlowMetric, hydro.endpoint) %>%
-  summarise(MedDelta = median(DeltaH)) %>%
-  ungroup() %>%
-  rename(COMID = comid) %>%
-  dplyr::select(-FlowMetric)  %>%
-  pivot_wider(names_from = hydro.endpoint, values_from = MedDelta) %>% dplyr::select(COMID:Wet_BFL_Mag_50)
-
-head(delta_med)
-## join with all data by comid
-data_hyd_sf <- right_join(tass_sp, delta_med, by = "COMID") ## 209 reaches don't match
-names(data_hyd_sf)
-head(data_hyd_sf)
-
-length(unique(tass_sp$COMID)) ## 3845
-length(unique(delta_med$COMID)) ## 2117
-length(unique(data_hyd_sf$COMID)) ## 2117
-
-
-## save out
-
-save(data_hyd_sf, file = "ignore/00_all_env_data_gridded.RData")
-load(file = "ignore/00_all_env_data_gridded.RData")
-
-# Create rasters ----------------------------------------------------------
+# Create rasters -----------------------------------------------------------
 
 ## format shape file
-
-data_sf <- na.omit(data_hyd_sf) %>%
-  dplyr::select(ID.2, X, Y, COMID, MRVBF.Mx:AvgSlope, ppt_ann:Wet_BFL_Mag_50) #%>%
-head(data_sf)
+data_sf <- na.omit(tass_sp) %>%
+  dplyr::select(ID.2, X, Y, MRVBF.Mx:TC_042014_RB9.3_Var) #%>%
 
 ## make spatial and transformCRS
 coordinates(data_sf) <- ~X+Y
 
 projection(data_sf) <- "+proj=geocent +ellps=GRS80 +units=m +no_defs"
-crs(data_sf)
-class(data_sf)
+
 ## create template raster
 
 ## dims etc from CurrentGridFeb14.grd
@@ -378,26 +328,189 @@ projection(x) <- "+proj=geocent +ellps=GRS80 +units=m +no_defs"
 crs(x)
 
 #Create list of column names you want to rasterize
-fields <- names(data_sf) [2:36]
+fields <- names(data_sf) [2:65]
 fields
-## make rasters of each env var
 
+## make rasters of each env var
 for (i in fields){
   x[[i]]<-raster::rasterize(data_sf, x, field=i, na.rm =TRUE, sp = TRUE)
   projection(x)<-"+proj=geocent +ellps=GRS80 +units=m +no_defs"
   x <- stack(x)
 }
-x
-# names(x)[1:i] <- fields[1:i]
-x@layers
 
-## get layer names and save as object
+x@layers ## check
+## define and save layer names
 layerNames <- names(x)
 save(layerNames, file = "output_data/00_raster_layer_names.RData")
 
-plot(x[[2]]) ## to check
-x
+# plot(x[[1]]) ## to check
+
 ## save out
 writeRaster(x, "ignore/00_raw_new_data_raster.tif", format="GTiff", crs="+proj=geocent +ellps=GRS80 +units=m +no_defs", overwrite=TRUE)
 
+# Add Comids   --------------------------------------------------
 
+## make raster mask
+rmask <- x[[1]]
+crs(rmask) <- "+proj=utm +zone=11 +datum=NAD83"
+crs(x) <-  "+proj=utm +zone=11 +datum=NAD83"
+
+coms <- raster("/Users/katieirving/SCCWRP/SD Hydro Vulnerability Assessment - General/Data/SpatialData/NHDplus_RB9_Raster_v2/NHDplus_RB9_csc_Raster.tif")
+coms ## no values are zeros, slightly different res and ncells
+
+## resample to mask layer
+comsRE <- resample(coms, rmask, method = "ngb")
+comsRE
+
+# test <- stack(comsRE, rmask)
+# test <- na.omit(as.data.frame(test, xy=T))
+
+head(test)
+
+## stack with other rasters
+rstack <- stack(x, comsRE)
+plot(rstack)
+
+## check and plot
+# rDF <- na.omit(as.data.frame(rstack, xy=T))
+# length(unique(rDF$NHDplus_RB9_csc_Raster))
+# rDFSP <- rDF %>%
+#   st_as_sf(coords=c("x", "y"), crs=26911, remove=F) %>%
+#   filter(!NHDplus_RB9_csc_Raster == 0)
+# 
+# plot(comsRE)
+# plot(rDFSP, add=T)
+
+## save raster stack
+writeRaster(rstack, "ignore/00_raw_new_data_raster_Coms_zero.tif", format="GTiff", crs="+proj=geocent +ellps=GRS80 +units=m +no_defs", overwrite=TRUE)
+
+## save df
+save(rDF, file="ignore/00_raw_new_data_coms_zero.RData")
+
+## for now, get comids from nhdplustools
+
+rDF <- rDF %>% mutate(ID = 1:nrow(rDF)) 
+
+orig.sdata.segs <- rDF %>%
+  dplyr::select(x,y, ID) %>%
+  st_as_sf(coords=c("x", "y"), crs=26911, remove=F)%>%
+  st_transform(crs=32611) %>%
+  arrange(ID)
+
+# use nhdtools to get comids
+data_all_coms <- orig.sdata.segs %>%
+  group_split(ID) %>%
+  set_names(., orig.sdata.segs$ID) %>%
+  map(~discover_nhdplus_id(.x$geometry))
+
+# flatten into single dataframe instead of list
+data_segs_df <-data_all_coms %>% flatten_dfc() %>% t() %>%
+  as.data.frame() %>%
+  rename("COMID"=V1) %>% rownames_to_column(var = "ID") %>%
+  mutate(ID = as.integer(ID))
+data_segs_df
+
+## join back to DF
+rDFComs <- full_join(rDF, data_segs_df, by = "ID")
+
+head(rDFComs)
+
+
+save(rDFComs, file="ignore/00_raw_new_data_coms_nhd.RData")
+
+## save comids as raster to stack with other env
+
+rstack <- stack("ignore/00_raw_new_data_raster_Coms_zero.tif")
+names(rstack)
+rstack
+## layer names
+load(file = "output_data/00_raster_layer_names.RData")
+layerNames
+names(rstack) <- c(layerNames, "COMIDGIS")
+
+## env df with comids
+load(file="ignore/00_raw_new_data_coms_nhd.RData")
+head(rDFComs)
+names(rDFComs)
+
+## make spatial and transformCRS
+coordinates(rDFComs) <- ~x+y
+
+projection(rDFComs) <- "+proj=geocent +ellps=GRS80 +units=m +no_defs"
+## make raster and add to stack
+
+x <- raster(ncol=701, nrow=649, xmn=423638.013766974, xmx=563838.013766974, ymn=3600402.14370233 , ymx=3730202.14370233)
+projection(x) <- "+proj=geocent +ellps=GRS80 +units=m +no_defs"
+crs(x)
+
+#Create list of column names you want to rasterize
+fields <- names(rDFComs) [c(1:66)]
+fields
+
+
+## make rasters of each env var
+for (i in fields){
+  x[[i]]<-raster::rasterize(rDFComs, x, field=i, na.rm =TRUE, sp = TRUE)
+  projection(x)<-"+proj=geocent +ellps=GRS80 +units=m +no_defs"
+  x <- stack(x)
+}
+
+
+layerNames <- names(x)
+layerNames
+x
+
+save(layerNames, file = "output_data/00_raster_layer_names.RData")
+
+writeRaster(x, "ignore/00_raw_new_data_raster_Coms_zero.tif", format="GTiff", crs="+proj=geocent +ellps=GRS80 +units=m +no_defs", overwrite=TRUE)
+# 
+
+# stuff not working -------------------------------------------------------
+## upload nhd points
+nhdPts <- st_read("/Users/katieirving/SCCWRP/SD Hydro Vulnerability Assessment - General/Data/SpatialData/NHD_reaches_RB9_points/NHD_reaches_RB9_points.shp")
+dim(nhdPts)
+
+crs(x) <- "+proj=utm +zone=11 +datum=NAD83"
+?extract
+test <- raster::extract(x, nhdPts)
+dim(test)
+dim(na.omit(test))
+## upload raster mask
+rmask <- raster("ignore/02_mask_raster_network.tif")
+crs(rmask)
+
+
+## convert to df
+r_df <- as.data.frame(rmask, xy=T)
+r_df <- na.omit(r_df)
+
+## make spatial
+r_dfSP <- r_df %>%
+  st_as_sf(coords=c("x", "y"), crs=4269, remove=F) 
+
+head(r_dfSP)
+dim(r_dfSP)
+
+coms <- raster("/Users/katieirving/SCCWRP/SD Hydro Vulnerability Assessment - General/Data/SpatialData/NHDplus_RB9_Raster_v2/NHDplus_RB9_csc_Raster.tif")
+coms ## no values are zeros, slightly different res and ncells
+plot(coms)
+## resample to mask layer
+comsRE <- resample(coms, rmask, method = "ngb")
+comsRE
+
+test <- stack(comsRE, rmask)
+test
+test <- na.omit(test)
+test
+## make dataframe
+comsDF <- as.data.frame(coms, xy=T) 
+## change name of comid raster
+names(comsDF)[3] <-"COMID"
+
+## some comids are 0, replacewith NA
+comsDF$COMID[comsDF$COMID == 0] <- NA
+comsDF <- na.omit(comsDF)
+length(unique(comsDF$COMID)) ## 1993
+
+dim(comsDF)
+head(comsDF)

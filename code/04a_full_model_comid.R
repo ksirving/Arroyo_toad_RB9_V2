@@ -10,6 +10,7 @@ library(ks)
 library(sm)
 library(sf)
 library(tidyverse)
+library(tidylog)
 library(mapview)
 library(caret)
 getwd()
@@ -17,15 +18,12 @@ setwd("/Users/katieirving/OneDrive - SCCWRP/Documents - Katie’s MacBook Pro/gi
 
 ## upload data
 
-load(file =  "ignore/02_all_data_for_model_gridded.RData") # NewDataObsSub - for model build
-load(file =  "ignore/02_all_data_for_prediction_gridded.RData") #NewDataObs - for prediction
+load(file = "ignore/03_all_env_bio_data_NHD_COMID.RData")
 
-head(NewDataObsSub)
-# NewDataObs <- NewDataObs %>%
-#   as.data.frame() %>%
-#   dplyr::select(-geometry)
+head(NewDataObsComid)
 
-# length(unique(NewDataObs$COMID)) ## don't have comids
+NewDataObsSub <- NewDataObsComid %>%
+  filter(PresAbs %in% c(0,1))
 
 ## get path for functions
 source("original_model/Current/randomForests/PARTITIONING/DATA3/Functions.R")
@@ -35,18 +33,18 @@ names(NewDataObsSub)
 
 ## remove nas and rearrange for easy indexing, remove ds 50 and change neg ffm values to zero
 all_data_obs <- NewDataObsSub %>%
-  select(-DS_Mag_50) %>%
-  select(-DS_Mag_50) %>%
-  pivot_longer(DS_Mag_90:Wet_BFL_Mag_10, names_to = "ffm", values_to = "value") %>%
+  # select(-DS_Mag_50) %>%
+  pivot_longer(DS_Mag_50:Wet_BFL_Mag_50, names_to = "ffm", values_to = "value") %>%
   mutate(value = ifelse(value < 0, 0, value)) %>%
   pivot_wider(names_from = "ffm", values_from = "value") %>%
-  select(COMID, PresAbs,  MRVBF.Mx:Wet_BFL_Mag_10, -geometry) %>%
+  select(COMID, PresAbs,  TC_042014_RB9.1_Var:Wet_BFL_Mag_50) %>%
   drop_na()
+
 head(all_data_obs)
 names(all_data_obs)
-str(all_data_obs)
-cl <- MultiColinear(all_data_obs[,c(2:35)], p=0.05)
-xdata <- all_data_obs[,c(2:35)]
+
+cl <- MultiColinear(all_data_obs[,c(3:37)], p=0.05)
+xdata <- all_data_obs[,c(3:37)]
 xdata
 
 for(l in cl) {
@@ -71,13 +69,13 @@ set.seed(234)
 b=10001
 
 ydata <- factor(all_data_obs$PresAbs, levels = c(1,0))
-xdata <- all_data_obs[,c(3:32)] 
+xdata <- all_data_obs[,c(3:34)] 
 
 class(ydata)
 length(ydata)
 
 # PERCENT OF PRESENCE OBSERVATIONS
-( dim(all_data_obs[all_data_obs$PresAbs == 1, ])[1] / dim(all_data_obs)[1] ) * 100 ## 93%
+( dim(all_data_obs[all_data_obs$PresAbs == 1, ])[1] / dim(all_data_obs)[1] ) * 100 ## 61%
 
 # RUN RANDOM FORESTS MODEL SELECTION FUNCTION
 #Also provides variable importance and such
@@ -92,7 +90,7 @@ sel.vars <- rf.model$PARAMETERS[[1]]# set to use 2 - lowest error rate and has a
 
 rf.data <- data.frame(y=ydata, xdata[,sel.vars])	
 
-(rf.final <- randomForest(y=rf.data[,1], x=rf.data[,2:ncol(rf.data)], ntree=b, mtry = 7,nodesize=5,
+(rf.final <- randomForest(y=rf.data[,1], x=rf.data[,2:ncol(rf.data)], ntree=b, mtry = 6, nodesize=5,
                           importance=TRUE, norm.votes=TRUE, proximity=TRUE) )
 names(rf.data)
 
@@ -158,7 +156,7 @@ m1 <- ggplot(data = mdsData, aes(x=X, y=Y)) +
   ggtitle(paste("Pres/Abs", "PROXIMITY MATRIX", sep=" - "))
 m1
 
-file.name1 <- "/Users/katieirving/Documents/Documents - Katie’s MacBook Pro/git/Arroyo_toad_RB9/Figures/01_full_model_mds_scale.jpg"
+file.name1 <- "/Users/katieirving/OneDrive - SCCWRP/Documents - Katie’s MacBook Pro/git/Arroyo_toad_RB9/Figures/01_full_model_mds_scale_comid.jpg"
 ggsave(m1, filename=file.name1, dpi=300, height=5, width=6)
 
 
@@ -191,37 +189,37 @@ model$resample
 
 model
 
-  
+
 # mtry  ROC        Sens       Spec     
-# 2    0.9623894  0.9900113  0.5593407
-# 16    0.9509299  0.9895374  0.5824176
-# 30    0.9571864  0.9876348  0.5752747
+# 2    0.8137235  0.8823810  0.4569444
+# 17    0.8197454  0.8680952  0.5986111
+# 32    0.8210384  0.8547619  0.5861111
 # 
 # ROC was used to select the optimal model using the largest value.
-# The final value used for the model was mtry = 2.
+# The final value used for the model was mtry = 32.
 
 
 confusionMatrix(predict(model,testing),testing$y)
 
 # Reference
 # Prediction Present Absent
-# Present     513     22
-# Absent        4     21
+# Present      28      8
+# Absent        4     18
 # 
-# Accuracy : 0.9536          
-# 95% CI : (0.9327, 0.9695)
-# No Information Rate : 0.9232          
-# P-Value [Acc > NIR] : 0.002717        
+# Accuracy : 0.7931          
+# 95% CI : (0.6665, 0.8883)
+# No Information Rate : 0.5517          
+# P-Value [Acc > NIR] : 0.0001106       
 # 
-# Kappa : 0.5948          
+# Kappa : 0.5756          
 # 
-# Sensitivity : 0.9923          
-# Specificity : 0.4884          
-# Pos Pred Value : 0.9589          
-# Neg Pred Value : 0.84            
-# Prevalence : 0.9232          
-# Detection Rate : 0.9161          
-# Detection Prevalence : 0.9554          
+# Sensitivity : 0.875           
+# Specificity : 0.6923          
+# Pos Pred Value : 0.7778          
+# Neg Pred Value : 0.8182          
+# Prevalence : 0.5517          
+# Detection Rate : 0.4828          
+# Detection Prevalence : 0.6207          
 # 
 # 'Positive' Class : Present 
 
@@ -265,8 +263,8 @@ dotchart(p[ord,1], main="Scaled Variable Importance", pch=19)
 # Predict on all rb9 region-------------------------------------------------------
 
 #Index refers to the right column of probabilities - in this model the second column, which is probs of "1"
-all_data <- na.omit(NewDataObs)
-all_data <- all_data[,c("x","y", sel.vars)] ## fix this issue!!!
+all_data <- na.omit(NewDataObsComid)
+all_data <- all_data[,c("COMID", sel.vars)] ## fix this issue!!!
 head(all_data)
 str(all_data)
 
@@ -277,15 +275,14 @@ pred <- predict(rf.final, all_data,filename="output_data/Current/Model1/SppProbs
 pred_df <- as.data.frame(predict(rf.final, all_data,filename="output_data/Current/Model1/SppProbs.img", type="prob",  index=2, 
                                  na.rm=TRUE, overwrite=TRUE, progress="window"))
 ## add comids
-pred_df$x <- all_data$x
-pred_df$y <- all_data$y
+pred_df$COMID <- all_data$COMID
 
 pred_df
 
 # partial dependence plots ------------------------------------------------
 
 sp=0.6
-pdf("/Users/katieirving/OneDrive - SCCWRP/Documents - Katie’s MacBook Pro/git/Arroyo_toad_RB9_V2/Figures/PartialPlots_6_full_model_gridded.pdf", width=8, height=8)
+pdf("/Users/katieirving/OneDrive - SCCWRP/Documents - Katie’s MacBook Pro/git/Arroyo_toad_RB9_V2/Figures/PartialPlots_6_full_model_comid.pdf", width=8, height=8)
 p <- as.matrix(rf.final$importance)    
 ord <- rev(order(p[,1], decreasing=TRUE)[1:dim(p)[1]])  
 dotchart(p[ord,1], main="Scaled Variable Importance", pch=19)
@@ -335,7 +332,7 @@ head(nhd)
 names(all_data)
 
 obs <- all_data_obs %>%
-  dplyr::select(COMID, NewObs)
+  dplyr::select(COMID, PresAbs)
 
 obs
 
@@ -356,12 +353,12 @@ plot(nhd_lines_prob[5])
 ### round prob values - change later
 nhd_lines_prob <- nhd_lines_prob %>%
   rename(probOcc = 4) %>%
-  mutate(probRound = round(probOcc, digits=1))
+  mutate(probRound = round(probOcc, digits=1)) %>% st_zm()
 
 ## join in obs
 
 nhd_lines_obs <- right_join(nhd_lines_rb9, obs, by = "COMID")
-nhd_lines_obs <- st_zm(nhd_lines_obs) %>% mutate(nhd_lines_obs, NewObs = as.factor(NewObs)) %>%
+nhd_lines_obs <- st_zm(nhd_lines_obs) %>% mutate(nhd_lines_obs, PresAbs = as.factor(PresAbs)) %>%
   drop_na(Shape_Leng) %>% st_centroid()
 
 nhd_lines_obs
@@ -374,7 +371,7 @@ library(ggmap)
 nhd_lines_probx <- nhd_lines_prob %>%
   dplyr::select(COMID, probOcc, geometry)
 
-st_write(nhd_lines_probx, "output_data/full_model/01_full_model_prob_occurrence.shp", layer_options = "OVERWRITE=true")
+st_write(nhd_lines_probx, "output_data/full_model/01_full_model_prob_occurrence_comid.shp", layer_options = "OVERWRITE=true")
 
 # For google map, you have to give the center of the window you are looking at.
 # Possibility for the map type argument: terrain / satellite / roadmap / hybrid
@@ -382,12 +379,12 @@ st_write(nhd_lines_probx, "output_data/full_model/01_full_model_prob_occurrence.
 
 map1 <- ggplot() +
   geom_sf(data = nhd_lines_prob, aes(color = probOcc)) + 
-  geom_sf(data = subset(nhd_lines_obs, NewObs == 1)) 
-  # scale_fill_gradientn(colours=rev(magma(6))) ## colours not working
+  geom_sf(data = subset(nhd_lines_obs, PresAbs == 1)) 
+# scale_fill_gradientn(colours=rev(magma(6))) ## colours not working
 
 map1
 
-file.name1 <- "/Users/katieirving/Documents/Documents - Katie’s MacBook Pro/git/Arroyo_toad_RB9/Figures/01_full_model_prob_occs_map.jpg"
+file.name1 <- "/Users/katieirving/Documents/Documents - Katie’s MacBook Pro/git/Arroyo_toad_RB9/Figures/01_full_model_comid_prob_occs_map.jpg"
 ggsave(map1, filename=file.name1, dpi=300, height=5, width=6)
 
 library(mapview)
@@ -406,12 +403,12 @@ mapviewOptions(basemaps=basemapsList, vector.palette = colorRampPalette(c(  "red
 
 
 m1 <- mapview(nhd_lines_prob, zcol = "probOcc",  legend = TRUE, layer.name = "Probability of Occurrence") +
-  mapview(subset(nhd_lines_obs, NewObs == 1), col.regions = "black",cex = 2, layer.name = "Observations")
+  mapview(subset(nhd_lines_obs, PresAbs == 1), col.regions = "black",cex = 2, layer.name = "Observations")
 
 m1@map %>% leaflet::addMeasure(primaryLengthUnit = "meters")
 
-mapshot(m1, url = paste0(getwd(), "/ignore/01_full_model_prob_occs_mapview.html"),
-        file = paste0(getwd(), "/ignore/01_full_model_prob_occs_mapview.png"))
+mapshot(m1, url = paste0(getwd(), "/ignore/01_full_model_comid_prob_occs_mapview.html"),
+        file = paste0(getwd(), "/ignore/01_full_model_comid_prob_occs_mapview.png"))
 getwd()
 
 

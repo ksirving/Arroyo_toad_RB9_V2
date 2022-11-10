@@ -303,6 +303,7 @@ object.size(bio_data0)
 length(unique(bio_data0$COMID)) ## 218
 
 save(bio_data0, file = "ignore/01_original_bio_data_COMIDs.RData")
+load(file = "ignore/01_original_bio_data_COMIDs.RData")
 
 # Join all presence/absence together (points) ---------------------------------------------
 
@@ -311,6 +312,8 @@ head(bio_data0)
 ## format: selected columns, make life stage counts long, 
 unique(bio$Count)
 unique(bio$Year)
+
+head(bio_data2)
 ## USGS
 bio <- bio_data2 %>%
   dplyr::select(BUMIcount, ID, COMID, StartLat, StartLong, Year) %>%
@@ -319,6 +322,9 @@ bio <- bio_data2 %>%
   mutate(PresAbs = ifelse(Count < 1, 0, 1), Year = paste0("20", Year)) %>%
   filter(Year >= 2000) %>%
   distinct()
+
+head(bio)
+unique(bio2$LifeStage)
 
 ## other
 bio1 <- bio_data3 %>%

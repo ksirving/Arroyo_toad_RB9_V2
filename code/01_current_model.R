@@ -55,7 +55,8 @@ inshape="200mCells_PresAbs2005 PCA PresAbs Pts_MLT.shp" ## presence absence
 b=10001
 
 # READ SPECIES OBSERVATION DATA 
-
+crs(orig.sdata)
+as.data.frame(orig.sdata)
 orig.sdata<- sdata <- shapefile(inshape) ## p/a
 # str(sdata@data)
 proj4string(sdata)<-CRS("+proj=utm +zone=11 +datum=WGS84")
