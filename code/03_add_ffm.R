@@ -85,18 +85,12 @@ head(delta)
 
 comids <- unique(delta$comid)
 
-length(unique(delta$comid))
+length(unique(delta$comid)) ## 2117
 ## compare ffm comids with raster data
 Rtest <- rDFComs %>%
   filter(COMID %in% comids)
 
 length(unique(Rtest$COMID)) ## 1907
-
-## compare ffm comids with shape
-Stest <- nhdSC %>%
-  filter(COMID %in% delta$comid)
-
-length(unique(Stest$COMID)) ## 2116
 
 ## change names of columns
 delta_long <- delta %>% 
@@ -126,13 +120,13 @@ delta_med <- delta_long %>%
   pivot_wider(names_from = hydro.endpoint, values_from = MedDelta) %>% dplyr::select(COMID:Wet_BFL_Mag_50)
 
 ## join with all data by comid - all RB9
-data_hyd_sf <- inner_join(comsDF, delta_med, by = "COMID") ## 209 reaches don't match
+data_hyd_sf <- inner_join(rDFComs, delta_med, by = "COMID") ## 209 reaches don't match
 
-length(unique(comsDF$COMID)) ## 3686
+length(unique(rDFComs$COMID)) ## 3841
 length(unique(delta_med$COMID)) ## 2117
-length(unique(data_hyd_sf$COMID)) ## 1700??? check this!!
+length(unique(data_hyd_sf$COMID)) ## 1907
 
-
+head(data_hyd_sf)
 ## save out
 
 save(data_hyd_sf, file = "ignore/03_RB9_grdded_data.RData")
@@ -140,16 +134,84 @@ save(data_hyd_sf, file = "ignore/03_RB9_grdded_data.RData")
 
 ## join with all data by comid - observations
 data_hyd_sf_obs <- inner_join(NewDataObsSub, delta_med, by = "COMID") ## 209 reaches don't match
-?inner_join
-length(unique(NewDataObsSub$COMID)) ## 330
+
+length(unique(NewDataObsSub$COMID)) ## 268
 length(unique(delta_med$COMID)) ## 2117
-length(unique(data_hyd_sf_obs$COMID)) ## 90
+length(unique(data_hyd_sf_obs$COMID)) ## 110
 
 head(data_hyd_sf_obs)
 
 ## save out
 save(data_hyd_sf_obs, file = "ignore/03_RB9_grdded_data_observations.RData")
 
+
+
+
+# Plot comids -------------------------------------------------------------
+
+head(data_hyd_sf_obs)
+head(NewDataObsSub)
+
+## make delta data spatial
+
+## upload nhd reaches
+nhd <- st_read("/Users/katieirving/SCCWRP/SD Hydro Vulnerability Assessment - General/Data/SpatialData/NHD_reaches_RB9_castreamclassification.shp")
+crs(nhd)
+head(nhd)
+
+nhd_lines_delta <- nhd %>%
+  dplyr::select(CLASS, COMID) %>%
+  filter(COMID %in% delta_med$COMID) %>%
+  mutate(COMID = as.integer(COMID))
+
+length(unique(nhd_lines_delta$COMID)) ## 2116
+names(NewDataObsSub)
+names(data_hyd_sf)
+
+## comids matched ffm with all data
+data_hyd_sfWG <- nhd %>%
+  dplyr::select(CLASS, COMID) %>%
+  filter(COMID %in% data_hyd_sf$COMID) %>%
+  mutate(COMID = as.integer(COMID))
+
+
+## observations from all data
+NewDataObsSubWG <- NewDataObsSub %>%
+  st_transform(crs= crs(nhd_lines_delta)) %>%
+  dplyr::select(ID:TC_042014_RB9.3_Var, MRVBF.Mx,pptMonX2, COMID)
+
+## observations with hydro
+data_hyd_sf_obsWG <- data_hyd_sf_obs %>%
+  st_transform(crs= crs(nhd_lines_delta)) %>%
+  dplyr::select(ID:TC_042014_RB9.3_Var, MRVBF.Mx,pptMonX2,DS_Mag_50, COMID)
+
+## map
+# set background basemaps:
+basemapsList <- c("Esri.WorldTopoMap", "Esri.WorldImagery",
+                  "Esri.NatGeoWorldMap",
+                  "OpenTopoMap", "OpenStreetMap", 
+                  "CartoDB.Positron", "Stamen.TopOSMFeatures")
+
+mapviewOptions(basemaps=basemapsList, vector.palette = colorRampPalette(c(  "red", "green")) , fgb = FALSE)
+
+
+m1 <- mapview(nhd_lines_delta, col.regions = "green",cex = 2,layer.name = "FFM data COMIDs") +
+  mapview(data_hyd_sfWG, col.regions = "purple",cex = 2,layer.name = "Matched COMIDs") +
+  mapview(NewDataObsSubWG, col.regions = "pink",cex = 3, layer.name = "Observations with all data") +
+  mapview(data_hyd_sf_obsWG , col.regions = "red",cex = 3, layer.name = "Observations with FFM")
+
+m1@map %>% leaflet::addMeasure(primaryLengthUnit = "meters")
+
+mapshot(m1, url = paste0(getwd(), "/ignore/01_full_model_comid_prob_occs_mapview.html"),
+        file = paste0(getwd(), "/ignore/01_full_model_comid_prob_occs_mapview.png"))
+getwd()
+
+test <- filter(data_hyd_sf_obsWG, COMID == 	22547077)
+test
+
+test2 <- filter(data_hyd_sf_obsWG, LifeStage == "Pseudo")
+test2 ## some values missing from env data
+length(unique(test2$COMID))
 
 # Add hydro at observations by year -----------------------------------------------
 ## doesn't work as not all years at each comid

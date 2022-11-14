@@ -355,13 +355,19 @@ rmask <- x[[1]]
 crs(rmask) <- "+proj=utm +zone=11 +datum=NAD83"
 crs(x) <-  "+proj=utm +zone=11 +datum=NAD83"
 
-coms <- raster("/Users/katieirving/SCCWRP/SD Hydro Vulnerability Assessment - General/Data/SpatialData/NHDplus_RB9_Raster_v2/NHDplus_RB9_csc_Raster.tif")
-coms ## no values are zeros, slightly different res and ncells
+coms <- raster("/Users/katieirving/SCCWRP/SD Hydro Vulnerability Assessment - General/Data/SpatialData/NHD_reaches_RB9_castreamclassification_PolylineToRaster_v3.tif")
+coms ## 
+names(coms) <- "COMID"
+# coms<-projectRaster(coms, crs = crs(rmask))
+# coms
+
 
 ## resample to mask layer
 comsRE <- resample(coms, rmask, method = "ngb")
 comsRE
 
+comx <- na.omit(as.data.frame(comsRE))
+length(unique(comx$COMID)) ## 2000
 # test <- stack(comsRE, rmask)
 # test <- na.omit(as.data.frame(test, xy=T))
 

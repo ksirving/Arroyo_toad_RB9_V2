@@ -92,7 +92,7 @@ crs(bioSnapCds)
 ## get cell numbers at pres/abs sites 
 cellsPres <- raster::extract(rmask, bioSnapCds, cellnumbers=TRUE)
 # dim(cellsPres) ## 2797
-# head(cellsPres)
+head(cellsPres)
 
 ## remove z dimension
 bioSnapCds <- st_zm(bioSnapCds)
