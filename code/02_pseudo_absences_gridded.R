@@ -37,11 +37,11 @@ setwd("/Users/katieirving/OneDrive - SCCWRP/Documents - Katie’s MacBook Pro/gi
 # Physical data -----------------------------------------------------------
 # getwd()
 # 
-# ## read in stack created in 00
-# xvars <- stack("ignore/00_raw_new_data_raster.grd") ## new rasters @ 200m - change as needed
-# # xvars <- xvars[[2:97]] ## remove template raster
-# crs(xvars)
-# xvars
+## read in stack created in 00
+xvars <- stack("ignore/00_raw_new_data_raster.tif") ## new rasters @ 200m - change as needed
+# xvars <- xvars[[2:97]] ## remove template raster
+crs(xvars)
+xvars
 
 # Bio data ----------------------------------------------------------------
 
@@ -61,15 +61,19 @@ orig.sdata<- sdata <- shapefile(inshape2) ## p/a
 
 # Snap occurrence to stream grids -----------------------------------------
 
+## upload old raster mask for crs
+rmaskOld <- raster("ignore/02_mask_raster_network.tif")
+crs(rmaskOld)
+
 ## snap points within a 50m buffer
 ## prep data for snap
 
 ## make a raster mask to snap points to
-# xvars1 <- xvars[[1]]
-# crs(xvars1) <- "+proj=utm +zone=11 +datum=NAD83"
-# crs(xvars1)
-# ## save out
-# writeRaster(xvars1, "ignore/02_mask_raster_network.tif", format="GTiff", overwrite=T)
+xvars1 <- xvars[[1]]
+crs(xvars1) <- "+proj=utm +zone=11 +datum=NAD83"
+crs(xvars1)
+## save out
+writeRaster(xvars1, "ignore/02_mask_raster_network_new.tif", format="GTiff", overwrite=T)
 
 # snapped in in GIS by Abel, snapped to 50m 
 
@@ -77,7 +81,8 @@ orig.sdata<- sdata <- shapefile(inshape2) ## p/a
 bioSnap <- shapefile("/Users/katieirving/OneDrive - SCCWRP/Documents - Katie’s MacBook Pro/git/Arroyo_toad_RB9_V2/output_data/ToadsObs_50m_Final.shp")
 
 ## upload raster mask
-rmask <- raster("ignore/02_mask_raster_network.tif")
+
+rmask <- raster("ignore/02_mask_raster_network_new.tif")
 crs(rmask)
 
 ## plot grdis and points
@@ -89,6 +94,7 @@ bioSnapCds <- bioSnap %>% as.data.frame() %>%
   dplyr::select(ID, COMID, Year:PresAbs, centroid_x, centroid_y) %>%
   st_as_sf(coords=c("centroid_x", "centroid_y"), crs=4326, remove=F) 
 crs(bioSnapCds)
+
 ## get cell numbers at pres/abs sites 
 cellsPres <- raster::extract(rmask, bioSnapCds, cellnumbers=TRUE)
 # dim(cellsPres) ## 2797
@@ -216,14 +222,14 @@ sdata1 <- st_read("ignore/02_pres_abs_pseudo_abs.shp")
 head(sdata1)
 
 ## read in stack created in 00
-xvars <- stack("ignore/00_raw_new_data_raster_Coms_zero.tif") ## new rasters @ 200m - change as needed
-xvars
+xvars <- stack("ignore/00_raw_new_data_raster.tif") ## new rasters @ 200m - change as needed
+crs(xvars)
 ## upload and add layer names 
 load(file = "output_data/00_raster_layer_names.RData")
 names(xvars) <- layerNames
 
 ## change crs to match mask
-crs(xvars) <- crs(rmask)
+crs(xvars) <- crs(rmaskOld)
 
 ## get coordinates of snapped points, change NAs in lifestage so csn drop all nas from DF
 bioData <- sdata1 %>% as.data.frame() %>%
@@ -257,24 +263,29 @@ bioData <- st_zm(bioData)
 
 ## get raster values at all presence cells
 cellsPres <- raster::extract(xvars, bioData,  cellnumbers = T, df=TRUE)
-names(cellsPres)[1] <- "ID2"
+# names(cellsPres)[1] <- "ID2"
 head(bioData)
-## join together biodata and cells with presences
+cellsPres
+## join together biodata and cells with presences, remove comid
 
 NewDataObsSub <- cbind(bioData[,-2], cellsPres) 
 names(NewDataObsSub)
 
 dim(NewDataObsSub) # 3499
-length(unique(NewDataObsSub$cells)) ## 1430
+length(unique(NewDataObsSub$cells)) ## 1461
 
 ## env df with comids
-load(file="ignore/00_raw_new_data_coms_nhd.RData")
-## join with COMIDs
+load(file = "ignore/00_raw_new_data_raster_df_coms.RData") ##DataComs
+head(DataComs)
 
-COMs <- as.data.frame(rDFComs) %>% dplyr::select(ID, COMID) %>% rename(ID2 = ID)
+## join pres/abs with comids from env data - join by grid cell number
+
+COMs <- as.data.frame(DataComs) %>% dplyr::select(COMID, cells) 
 COMs
 
-NewDataObsSub <- inner_join(NewDataObsSub, COMs, by = "ID2")
+NewDataObsSub <- inner_join(NewDataObsSub, COMs, by = "cells")
+
+length(unique(NewDataObsSub$COMID)) ## 322
 
 save(NewDataObsSub, file = "ignore/02_all_data_for_model_gridded.RData")
 

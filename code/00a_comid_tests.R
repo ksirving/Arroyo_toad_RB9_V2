@@ -129,11 +129,11 @@ plot(origCOMIDsSub)
 
 # New data raster (made on 00) --------------------------------------------
 
-n1 <- stack("ignore/00_raw_new_data_raster_Coms_zero.tif")
-
-## load layer names 
-load(file = "output_data/00_raster_layer_names.RData")
-layerNames
+n1 <- stack("ignore/00_raw_new_data_raster.tif")
+n1
+# ## load layer names 
+# load(file = "output_data/00_raster_layer_names.RData")
+# layerNames
 
 n1 <- n1[[1]] ## get only 1 for test
 
@@ -147,7 +147,7 @@ NewCOMIDs <- cbind(nhdPoints, NewCellsNHDPts)
 NewCOMIDs
 ## remove nas from raster layer - this is where no value exists at the nhd locations
 
-NewCOMIDsSub <- NewCOMIDs %>% drop_na(X00_raw_new_data_raster_Coms_zero.1)
+NewCOMIDsSub <- NewCOMIDs %>% drop_na(X00_raw_new_data_raster.1)
 
 length(unique(NewCOMIDsSub$COMID)) ## 2107
 
@@ -173,7 +173,7 @@ plot(origCOMIDsSub)
 
 # Match with hydro comids -------------------------------------------------
 
-head(origCOMIDsSub) ## original cells, use this as working from it
+head(NewCOMIDsSub) ## original cells with new data, use this as working from it
 
 ## hydro data
 
@@ -185,20 +185,19 @@ length(unique(delta$comid)) ## 2117
 comids <- unique(delta$comid)
 
 ## compare ffm comids with raster data
-Rtest <- origCOMIDsSub %>%
+Rtest <- NewCOMIDsSub %>%
   filter(COMID %in% comids)
 
 length(unique(Rtest$COMID)) ## 2048
 
 ## which are missing?
 
-
-Missing <- origCOMIDsSub %>%
+Missing <- NewCOMIDsSub %>%
   filter(!COMID %in% comids)
 
 miscoms <- unique(Missing$COMID)
 
-## save loist of missing comids
+## save list of missing comids
 write.csv(miscoms, "output_data/00a_missing_comids.csv")
 
 plot(Missing)

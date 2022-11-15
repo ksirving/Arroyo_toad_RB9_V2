@@ -72,13 +72,13 @@ Etest <- nhdPts %>%
 # Upload all data ---------------------------------------------------------
 
 ## read in dfcreated in 00 - RB9 data
-load(file="ignore/00_raw_new_data_coms_nhd.RData")
-head(rDFComs)
+load(file="ignore/00_raw_new_data_raster_df_coms.RData")
+head(DataComs)
 
 load(file = "ignore/02_all_data_for_model_gridded.RData") ## data only at pres/abs
 head(NewDataObsSub)
 
-# Add hydro (median)---------------------------------------------------------------
+# Upload and match FFM---------------------------------------------------------------
 
 delta <- read.csv("/Users/katieirving/OneDrive - SCCWRP/Documents - Katie’s MacBook Pro/git/Arroyo_toad_RB9_V2/ignore/2022-07-28_predicted_abs_FFM_deltaFFM_SD_COMIDS_medianDelta_test5_norunoff.csv")
 head(delta)
@@ -87,10 +87,43 @@ comids <- unique(delta$comid)
 
 length(unique(delta$comid)) ## 2117
 ## compare ffm comids with raster data
-Rtest <- rDFComs %>%
+Rtest <- DataComs %>%
   filter(COMID %in% comids)
 
-length(unique(Rtest$COMID)) ## 1907
+length(unique(Rtest$COMID)) ## 2048
+
+## which are missing?
+
+Missing <- DataComs %>%
+  filter(!COMID %in% comids)
+
+miscoms <- unique(Missing$COMID)
+
+## save list of missing comids
+write.csv(miscoms, "output_data/03_missing_comids.csv")
+miscoms
+plot(Missing)
+
+## nhd lines
+
+## upload nhd shape
+nhd <- st_read("/Users/katieirving/SCCWRP/SD Hydro Vulnerability Assessment - General/Data/SpatialData/NHD_reaches_RB9_castreamclassification.shp")
+## simplify
+nhd <- nhd %>%
+  st_as_sf %>%
+  st_simplify(dTolerance = 0.5, preserveTopology = T)
+
+
+## get line string of missing coms
+
+nhdMissing <- nhd %>%
+  filter(COMID %in% miscoms)
+
+nhdMissing
+## save for Abel
+st_write(nhdMissing, "output_data/03_missing_coms_multiline.shp", append = F)
+
+# Format and join hydro ---------------------------------------------------
 
 ## change names of columns
 delta_long <- delta %>% 
@@ -110,23 +143,24 @@ delta_long <- delta_long %>%
                                     FlowMetric == "wet_bfl_mag_10" ~ "Wet_BFL_Mag_10",
                                     FlowMetric == "wet_bfl_mag_50" ~ "Wet_BFL_Mag_50")) 
 
-## get median delta H per metric (median of years)
+## values are median, reformat wide
 delta_med <- delta_long %>%
   group_by(comid, FlowMetric, hydro.endpoint) %>%
-  summarise(MedDelta = median(MetricValue)) %>%
+  summarise(MedDelta = MetricValue) %>%
   ungroup() %>%
   rename(COMID = comid) %>%
   dplyr::select(-FlowMetric)  %>%
   pivot_wider(names_from = hydro.endpoint, values_from = MedDelta) %>% dplyr::select(COMID:Wet_BFL_Mag_50)
 
 ## join with all data by comid - all RB9
-data_hyd_sf <- inner_join(rDFComs, delta_med, by = "COMID") ## 209 reaches don't match
+data_hyd_sf <- inner_join(DataComs, delta_med, by = "COMID") ## 209 reaches don't match
 
-length(unique(rDFComs$COMID)) ## 3841
+length(unique(DataComs$COMID)) ## 2107
 length(unique(delta_med$COMID)) ## 2117
-length(unique(data_hyd_sf$COMID)) ## 1907
+length(unique(data_hyd_sf$COMID)) ## 2048
 
 head(data_hyd_sf)
+dim(data_hyd_sf) ## 15531
 ## save out
 
 save(data_hyd_sf, file = "ignore/03_RB9_grdded_data.RData")
@@ -135,16 +169,14 @@ save(data_hyd_sf, file = "ignore/03_RB9_grdded_data.RData")
 ## join with all data by comid - observations
 data_hyd_sf_obs <- inner_join(NewDataObsSub, delta_med, by = "COMID") ## 209 reaches don't match
 
-length(unique(NewDataObsSub$COMID)) ## 268
+length(unique(NewDataObsSub$COMID)) ## 322
 length(unique(delta_med$COMID)) ## 2117
-length(unique(data_hyd_sf_obs$COMID)) ## 110
+length(unique(data_hyd_sf_obs$COMID)) ## 318
 
 head(data_hyd_sf_obs)
 
 ## save out
 save(data_hyd_sf_obs, file = "ignore/03_RB9_grdded_data_observations.RData")
-
-
 
 
 # Plot comids -------------------------------------------------------------

@@ -62,11 +62,14 @@ names(data_sf)
 
 st_crs(data_sf)
 
-## upload raster mask
+## upload raster mask - this raster is incorrect, but has the correct crs for extracting
 rmask <- raster("ignore/02_mask_raster_network.tif")
 crs(rmask)
 
 # Format Climate data -------------------------------------------------
+
+## RB9 boundary
+
 
 gridsR <- raster(ncol=129, nrow=148, xmn= -2483239, xmx=-2380039, ymn=-4822142 , ymx=-4703742)
 
@@ -81,6 +84,7 @@ gridsR ## use as template to extract point data
 ## precipitation ###
 ppt_ann <- st_read("/Users/katieirving/SCCWRP/PRISM - General/Data/prism_annual average ppt_30yr.shp") %>%
   rename(ppt_annx = PRISM__) 
+class(ppt_ann)
 ## make spatial and transformCRS
 ppt_annSP <- as(ppt_ann, Class = "Spatial")
 ppt_annSP <- spTransform(ppt_annSP, CRS("+proj=geocent +ellps=GRS80 +units=m +no_defs"))
@@ -88,6 +92,7 @@ ppt_annSP <- spTransform(ppt_annSP, CRS("+proj=geocent +ellps=GRS80 +units=m +no
 ## create raster 
 ppt_annR <- rasterize(ppt_annSP, gridsR,  'ppt_annx',  na.rm =TRUE, sp = TRUE)
 class(ppt_annR)
+plot(ppt_annR)
 
 ## temperature ###
 tmax_ann <- st_read("/Users/katieirving/SCCWRP/PRISM - General/Data/prism_annual average tmax_30yr.shp") %>% 
@@ -117,7 +122,6 @@ names(annStack) <- c("ppt_ann", "tmax_ann", "tmin_ann")
 
 ## scale to 200m, takes value of original larger cell
 annStack200 <- disaggregate(annStack, 4)
-
 
 
 ## monthly data
@@ -303,16 +307,18 @@ tass_sp <- cbind(sept_values, raster::extract(aprilr[[c(1:3, 7:9)]], orig_grids)
 head(tass_sp)
 
 save(tass_sp, file = "ignore/00_tass_cap_climate_original_data.RData")
-load(file = "ignore/00_tass_cap_climate_original_data.RData")
 
-head(tass_sp)
 
 # Create rasters -----------------------------------------------------------
+
+## upload data
+load(file = "ignore/00_tass_cap_climate_original_data.RData")
+head(tass_sp)
 
 ## format shape file
 data_sf <- na.omit(tass_sp) %>%
   dplyr::select(ID.2, X, Y, MRVBF.Mx:TC_042014_RB9.3_Var) #%>%
-
+names(data_sf)
 ## make spatial and transformCRS
 coordinates(data_sf) <- ~X+Y
 
@@ -348,175 +354,215 @@ save(layerNames, file = "output_data/00_raster_layer_names.RData")
 ## save out
 writeRaster(x, "ignore/00_raw_new_data_raster.tif", format="GTiff", crs="+proj=geocent +ellps=GRS80 +units=m +no_defs", overwrite=TRUE)
 
-# Add Comids   --------------------------------------------------
+# Add COMIDs - with nhd shapefile -----------------------------------------
 
-## make raster mask
-rmask <- x[[1]]
-crs(rmask) <- "+proj=utm +zone=11 +datum=NAD83"
-crs(x) <-  "+proj=utm +zone=11 +datum=NAD83"
+## upload nhd shape
+nhd <- st_read("/Users/katieirving/SCCWRP/SD Hydro Vulnerability Assessment - General/Data/SpatialData/NHD_reaches_RB9_castreamclassification.shp")
+## simplify
+nhd <- nhd %>%
+  st_as_sf %>%
+  st_simplify(dTolerance = 0.5, preserveTopology = T)
 
-coms <- raster("/Users/katieirving/SCCWRP/SD Hydro Vulnerability Assessment - General/Data/SpatialData/NHD_reaches_RB9_castreamclassification_PolylineToRaster_v3.tif")
-coms ## 
-names(coms) <- "COMID"
-# coms<-projectRaster(coms, crs = crs(rmask))
-# coms
+crs(nhd) 
 
+## convert to points
+nhdPoints <- st_cast(nhd, "POINT")
+nhdPoints
 
-## resample to mask layer
-comsRE <- resample(coms, rmask, method = "ngb")
-comsRE
+## upload raster stack made above
 
-comx <- na.omit(as.data.frame(comsRE))
-length(unique(comx$COMID)) ## 2000
-# test <- stack(comsRE, rmask)
-# test <- na.omit(as.data.frame(test, xy=T))
-
-head(test)
-
-## stack with other rasters
-rstack <- stack(x, comsRE)
-plot(rstack)
-
-## check and plot
-# rDF <- na.omit(as.data.frame(rstack, xy=T))
-# length(unique(rDF$NHDplus_RB9_csc_Raster))
-# rDFSP <- rDF %>%
-#   st_as_sf(coords=c("x", "y"), crs=26911, remove=F) %>%
-#   filter(!NHDplus_RB9_csc_Raster == 0)
-# 
-# plot(comsRE)
-# plot(rDFSP, add=T)
-
-## save raster stack
-writeRaster(rstack, "ignore/00_raw_new_data_raster_Coms_zero.tif", format="GTiff", crs="+proj=geocent +ellps=GRS80 +units=m +no_defs", overwrite=TRUE)
-
-## save df
-save(rDF, file="ignore/00_raw_new_data_coms_zero.RData")
-
-## for now, get comids from nhdplustools
-
-rDF <- rDF %>% mutate(ID = 1:nrow(rDF)) 
-
-orig.sdata.segs <- rDF %>%
-  dplyr::select(x,y, ID) %>%
-  st_as_sf(coords=c("x", "y"), crs=26911, remove=F)%>%
-  st_transform(crs=32611) %>%
-  arrange(ID)
-
-# use nhdtools to get comids
-data_all_coms <- orig.sdata.segs %>%
-  group_split(ID) %>%
-  set_names(., orig.sdata.segs$ID) %>%
-  map(~discover_nhdplus_id(.x$geometry))
-
-# flatten into single dataframe instead of list
-data_segs_df <-data_all_coms %>% flatten_dfc() %>% t() %>%
-  as.data.frame() %>%
-  rename("COMID"=V1) %>% rownames_to_column(var = "ID") %>%
-  mutate(ID = as.integer(ID))
-data_segs_df
-
-## join back to DF
-rDFComs <- full_join(rDF, data_segs_df, by = "ID")
-
-head(rDFComs)
-
-
-save(rDFComs, file="ignore/00_raw_new_data_coms_nhd.RData")
-
-## save comids as raster to stack with other env
-
-rstack <- stack("ignore/00_raw_new_data_raster_Coms_zero.tif")
-names(rstack)
-rstack
-## layer names
-load(file = "output_data/00_raster_layer_names.RData")
-layerNames
-names(rstack) <- c(layerNames, "COMIDGIS")
-
-## env df with comids
-load(file="ignore/00_raw_new_data_coms_nhd.RData")
-head(rDFComs)
-names(rDFComs)
-
-## make spatial and transformCRS
-coordinates(rDFComs) <- ~x+y
-
-projection(rDFComs) <- "+proj=geocent +ellps=GRS80 +units=m +no_defs"
-## make raster and add to stack
-
-x <- raster(ncol=701, nrow=649, xmn=423638.013766974, xmx=563838.013766974, ymn=3600402.14370233 , ymx=3730202.14370233)
-projection(x) <- "+proj=geocent +ellps=GRS80 +units=m +no_defs"
+x <- stack("ignore/00_raw_new_data_raster.tif")
+crs(x) <- crs(rmask)
 crs(x)
 
-#Create list of column names you want to rasterize
-fields <- names(rDFComs) [c(1:66)]
-fields
+## extract raster values at points
+rasterAtPts <- raster::extract(x, nhdPoints, cellnumbers=TRUE)
+rasterAtPts
+
+## join together
+
+DataComs <- as.data.frame(cbind(nhdPoints, rasterAtPts) %>% drop_na(MRVBF.Mx)) %>% dplyr::select(-geometry)#%>% distinct(cells, .keep_all=T)
+DataComs <- DataComs %>% distinct()
+
+length(unique(DataComs$COMID)) ## 2107
+
+names()
+
+## save out
+
+save(DataComs, file = "ignore/00_raw_new_data_raster_df_coms.RData")
 
 
-## make rasters of each env var
-for (i in fields){
-  x[[i]]<-raster::rasterize(rDFComs, x, field=i, na.rm =TRUE, sp = TRUE)
-  projection(x)<-"+proj=geocent +ellps=GRS80 +units=m +no_defs"
-  x <- stack(x)
-}
 
+# Add Comids - not working properly   --------------------------------------------------
 
-layerNames <- names(x)
-layerNames
-x
-
-save(layerNames, file = "output_data/00_raster_layer_names.RData")
-
-writeRaster(x, "ignore/00_raw_new_data_raster_Coms_zero.tif", format="GTiff", crs="+proj=geocent +ellps=GRS80 +units=m +no_defs", overwrite=TRUE)
+## make raster mask
+# rmask <- x[[1]]
+# crs(rmask) <- "+proj=utm +zone=11 +datum=NAD83"
+# crs(x) <-  "+proj=utm +zone=11 +datum=NAD83"
 # 
-
-# stuff not working -------------------------------------------------------
-## upload nhd points
-nhdPts <- st_read("/Users/katieirving/SCCWRP/SD Hydro Vulnerability Assessment - General/Data/SpatialData/NHD_reaches_RB9_points/NHD_reaches_RB9_points.shp")
-dim(nhdPts)
-
-crs(x) <- "+proj=utm +zone=11 +datum=NAD83"
-?extract
-test <- raster::extract(x, nhdPts)
-dim(test)
-dim(na.omit(test))
-## upload raster mask
-rmask <- raster("ignore/02_mask_raster_network.tif")
-crs(rmask)
-
-
-## convert to df
-r_df <- as.data.frame(rmask, xy=T)
-r_df <- na.omit(r_df)
-
-## make spatial
-r_dfSP <- r_df %>%
-  st_as_sf(coords=c("x", "y"), crs=4269, remove=F) 
-
-head(r_dfSP)
-dim(r_dfSP)
-
-coms <- raster("/Users/katieirving/SCCWRP/SD Hydro Vulnerability Assessment - General/Data/SpatialData/NHDplus_RB9_Raster_v2/NHDplus_RB9_csc_Raster.tif")
-coms ## no values are zeros, slightly different res and ncells
-plot(coms)
-## resample to mask layer
-comsRE <- resample(coms, rmask, method = "ngb")
-comsRE
-
-test <- stack(comsRE, rmask)
-test
-test <- na.omit(test)
-test
-## make dataframe
-comsDF <- as.data.frame(coms, xy=T) 
-## change name of comid raster
-names(comsDF)[3] <-"COMID"
-
-## some comids are 0, replacewith NA
-comsDF$COMID[comsDF$COMID == 0] <- NA
-comsDF <- na.omit(comsDF)
-length(unique(comsDF$COMID)) ## 1993
-
-dim(comsDF)
-head(comsDF)
+# coms <- raster("/Users/katieirving/SCCWRP/SD Hydro Vulnerability Assessment - General/Data/SpatialData/NHD_reaches_RB9_castreamclassification_PolylineToRaster_v3.tif")
+# coms ## 
+# names(coms) <- "COMID"
+# # coms<-projectRaster(coms, crs = crs(rmask))
+# # coms
+# 
+# 
+# ## resample to mask layer
+# comsRE <- resample(coms, rmask, method = "ngb")
+# comsRE
+# 
+# comx <- na.omit(as.data.frame(comsRE))
+# length(unique(comx$COMID)) ## 2000
+# # test <- stack(comsRE, rmask)
+# # test <- na.omit(as.data.frame(test, xy=T))
+# 
+# head(test)
+# 
+# ## stack with other rasters
+# rstack <- stack(x, comsRE)
+# plot(rstack)
+# 
+# ## check and plot
+# # rDF <- na.omit(as.data.frame(rstack, xy=T))
+# # length(unique(rDF$NHDplus_RB9_csc_Raster))
+# # rDFSP <- rDF %>%
+# #   st_as_sf(coords=c("x", "y"), crs=26911, remove=F) %>%
+# #   filter(!NHDplus_RB9_csc_Raster == 0)
+# # 
+# # plot(comsRE)
+# # plot(rDFSP, add=T)
+# 
+# ## save raster stack
+# writeRaster(rstack, "ignore/00_raw_new_data_raster_Coms_zero.tif", format="GTiff", crs="+proj=geocent +ellps=GRS80 +units=m +no_defs", overwrite=TRUE)
+# 
+# ## save df
+# save(rDF, file="ignore/00_raw_new_data_coms_zero.RData")
+# 
+# ## for now, get comids from nhdplustools
+# 
+# rDF <- rDF %>% mutate(ID = 1:nrow(rDF)) 
+# 
+# orig.sdata.segs <- rDF %>%
+#   dplyr::select(x,y, ID) %>%
+#   st_as_sf(coords=c("x", "y"), crs=26911, remove=F)%>%
+#   st_transform(crs=32611) %>%
+#   arrange(ID)
+# 
+# # use nhdtools to get comids
+# data_all_coms <- orig.sdata.segs %>%
+#   group_split(ID) %>%
+#   set_names(., orig.sdata.segs$ID) %>%
+#   map(~discover_nhdplus_id(.x$geometry))
+# 
+# # flatten into single dataframe instead of list
+# data_segs_df <-data_all_coms %>% flatten_dfc() %>% t() %>%
+#   as.data.frame() %>%
+#   rename("COMID"=V1) %>% rownames_to_column(var = "ID") %>%
+#   mutate(ID = as.integer(ID))
+# data_segs_df
+# 
+# ## join back to DF
+# rDFComs <- full_join(rDF, data_segs_df, by = "ID")
+# 
+# head(rDFComs)
+# 
+# 
+# save(rDFComs, file="ignore/00_raw_new_data_coms_nhd.RData")
+# 
+# ## save comids as raster to stack with other env
+# 
+# rstack <- stack("ignore/00_raw_new_data_raster_Coms_zero.tif")
+# names(rstack)
+# rstack
+# ## layer names
+# load(file = "output_data/00_raster_layer_names.RData")
+# layerNames
+# names(rstack) <- c(layerNames, "COMIDGIS")
+# 
+# ## env df with comids
+# load(file="ignore/00_raw_new_data_coms_nhd.RData")
+# head(rDFComs)
+# names(rDFComs)
+# 
+# ## make spatial and transformCRS
+# coordinates(rDFComs) <- ~x+y
+# 
+# projection(rDFComs) <- "+proj=geocent +ellps=GRS80 +units=m +no_defs"
+# ## make raster and add to stack
+# 
+# x <- raster(ncol=701, nrow=649, xmn=423638.013766974, xmx=563838.013766974, ymn=3600402.14370233 , ymx=3730202.14370233)
+# projection(x) <- "+proj=geocent +ellps=GRS80 +units=m +no_defs"
+# crs(x)
+# 
+# #Create list of column names you want to rasterize
+# fields <- names(rDFComs) [c(1:66)]
+# fields
+# 
+# 
+# ## make rasters of each env var
+# for (i in fields){
+#   x[[i]]<-raster::rasterize(rDFComs, x, field=i, na.rm =TRUE, sp = TRUE)
+#   projection(x)<-"+proj=geocent +ellps=GRS80 +units=m +no_defs"
+#   x <- stack(x)
+# }
+# 
+# 
+# layerNames <- names(x)
+# layerNames
+# x
+# 
+# save(layerNames, file = "output_data/00_raster_layer_names.RData")
+# 
+# writeRaster(x, "ignore/00_raw_new_data_raster_Coms_zero.tif", format="GTiff", crs="+proj=geocent +ellps=GRS80 +units=m +no_defs", overwrite=TRUE)
+# # 
+# 
+# # stuff not working -------------------------------------------------------
+# ## upload nhd points
+# nhdPts <- st_read("/Users/katieirving/SCCWRP/SD Hydro Vulnerability Assessment - General/Data/SpatialData/NHD_reaches_RB9_points/NHD_reaches_RB9_points.shp")
+# dim(nhdPts)
+# 
+# crs(x) <- "+proj=utm +zone=11 +datum=NAD83"
+# ?extract
+# test <- raster::extract(x, nhdPts)
+# dim(test)
+# dim(na.omit(test))
+# ## upload raster mask
+# rmask <- raster("ignore/02_mask_raster_network.tif")
+# crs(rmask)
+# 
+# 
+# ## convert to df
+# r_df <- as.data.frame(rmask, xy=T)
+# r_df <- na.omit(r_df)
+# 
+# ## make spatial
+# r_dfSP <- r_df %>%
+#   st_as_sf(coords=c("x", "y"), crs=4269, remove=F) 
+# 
+# head(r_dfSP)
+# dim(r_dfSP)
+# 
+# coms <- raster("/Users/katieirving/SCCWRP/SD Hydro Vulnerability Assessment - General/Data/SpatialData/NHDplus_RB9_Raster_v2/NHDplus_RB9_csc_Raster.tif")
+# coms ## no values are zeros, slightly different res and ncells
+# plot(coms)
+# ## resample to mask layer
+# comsRE <- resample(coms, rmask, method = "ngb")
+# comsRE
+# 
+# test <- stack(comsRE, rmask)
+# test
+# test <- na.omit(test)
+# test
+# ## make dataframe
+# comsDF <- as.data.frame(coms, xy=T) 
+# ## change name of comid raster
+# names(comsDF)[3] <-"COMID"
+# 
+# ## some comids are 0, replacewith NA
+# comsDF$COMID[comsDF$COMID == 0] <- NA
+# comsDF <- na.omit(comsDF)
+# length(unique(comsDF$COMID)) ## 1993
+# 
+# dim(comsDF)
+# head(comsDF)
