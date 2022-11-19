@@ -25,6 +25,7 @@ library(rgdal)
 library(rgeos)
 library(terra)
 library(zoo)
+library(terra)
 
 
 setwd("/Users/katieirving/OneDrive - SCCWRP/Documents - Katie’s MacBook Pro/git/Arroyo_toad_RB9_V2")
@@ -366,19 +367,38 @@ nhd <- nhd %>%
 crs(nhd) 
 
 ## convert to points
-nhdPoints <- st_cast(nhd, "POINT")
-nhdPoints
+nhdPoints <- st_cast(nhd, "LINESTRING")
+nhdPoints 
+
+test <- nhdPoints %>%
+  filter(COMID %in% c(22549169, 20348307))
+
+plot(test)
+
+# set background basemaps:
+basemapsList <- c("Esri.WorldTopoMap", "Esri.WorldImagery",
+                  "Esri.NatGeoWorldMap",
+                  "OpenTopoMap", "OpenStreetMap", 
+                  "CartoDB.Positron", "Stamen.TopOSMFeatures")
+
+mapviewOptions(basemaps=basemapsList, vector.palette = colorRampPalette(c(  "red", "green")) , fgb = FALSE)
+
+
+m1 <- mapview(nhd, col.regions = "green",cex = 2,layer.name = "nhd reaches (line)") +
+  mapview(test, col.regions = "purple",cex = 2,layer.name = "test points")
+m1
+
+## looks like same point in the points file is 2 different reaches next to each other.
 
 ## upload raster stack made above
 
-x <- stack("ignore/00_raw_new_data_raster.tif")
+x <- terra::rast("ignore/00_raw_new_data_raster.tif")
 crs(x) <- crs(rmask)
-crs(x)
 
 ## extract raster values at points
 rasterAtPts <- raster::extract(x, nhdPoints, cellnumbers=TRUE)
+# rasterAtPts <- na.omit(rasterAtPts)
 rasterAtPts
-
 ## join together
 
 DataComs <- as.data.frame(cbind(nhdPoints, rasterAtPts) %>% drop_na(MRVBF.Mx)) %>% dplyr::select(-geometry)#%>% distinct(cells, .keep_all=T)

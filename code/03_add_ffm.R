@@ -191,6 +191,11 @@ nhd <- st_read("/Users/katieirving/SCCWRP/SD Hydro Vulnerability Assessment - Ge
 crs(nhd)
 head(nhd)
 
+test <- nhd %>%
+  filter(COMID %in% c(22549169, 20348307))
+
+test$geometry
+
 nhd_lines_delta <- nhd %>%
   dplyr::select(CLASS, COMID) %>%
   filter(COMID %in% delta_med$COMID) %>%
@@ -234,8 +239,8 @@ m1 <- mapview(nhd_lines_delta, col.regions = "green",cex = 2,layer.name = "FFM d
 
 m1@map %>% leaflet::addMeasure(primaryLengthUnit = "meters")
 
-mapshot(m1, url = paste0(getwd(), "/ignore/01_full_model_comid_prob_occs_mapview.html"),
-        file = paste0(getwd(), "/ignore/01_full_model_comid_prob_occs_mapview.png"))
+# mapshot(m1, url = paste0(getwd(), "/ignore/01_full_model_comid_prob_occs_mapview.html"),
+#         file = paste0(getwd(), "/ignore/01_full_model_comid_prob_occs_mapview.png"))
 getwd()
 
 test <- filter(data_hyd_sf_obsWG, COMID == 	22547077)
@@ -246,7 +251,7 @@ test2 ## some values missing from env data
 length(unique(test2$COMID))
 
 # Add hydro at observations by year -----------------------------------------------
-## doesn't work as not all years at each comid
+## doesn't work as already median 
 
 head(delta_wide)
 head(NewDataObsSub)

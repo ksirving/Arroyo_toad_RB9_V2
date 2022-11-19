@@ -22,16 +22,18 @@ load(file =  "ignore/03_RB9_grdded_data_observations.RData") # form model build
 head(data_hyd_sf_obs)
 head(data_hyd_sf)
 
+# 22549169, 20348307 have same coord and data values but different hydro value
 
+names(data_hyd_sf_obs)
 ## separate to bio and env
 
 bioMod <- data_hyd_sf_obs %>%
   as.data.frame() %>%
-  dplyr::select(COMID, ID, Year:PresAbs) ## change for correct COMID when checked
+  dplyr::select(COMID, ID, Year:PresAbs) ## 
   
 envMod <- data_hyd_sf_obs %>%
   as.data.frame() %>% 
-  dplyr::select(COMID, ID.1:TC_042014_RB9.3, DS_Mag_50:Wet_BFL_Mag_50) ## change for correct COMID when checked
+  dplyr::select(COMID, ID.1, MRVBF.Mx:TC_042014_RB9.3_Var, DS_Mag_50:Wet_BFL_Mag_50) 
 
 envPred <- data_hyd_sf %>% as.data.frame() 
 
@@ -40,31 +42,56 @@ envPred <- data_hyd_sf %>% as.data.frame()
 
 #### summarise by comid - mean, min, max and variance
 
-## make longer and group by comid and variable, just remote sense data firt
-RemSense_long <- envPred %>%
-  dplyr::select(COMID, TC_092014_RB9.1:TC_042014_RB9.3) %>%
-  pivot_longer(TC_092014_RB9.1:TC_042014_RB9.3, names_to = "Variable", values_to = "Value") %>%
+## make longer and group by comid and variable, just remote sense data first
+## median values
+RemSense_longMed <- envPred %>%
+  dplyr::select(COMID, ends_with("Med")) %>%
+  pivot_longer(c(TC_092014_RB9.1_Med:TC_092014_RB9.3_Med, TC_042014_RB9.1_Med:TC_042014_RB9.3_Med), names_to = "Variable", values_to = "Value") %>%
   group_by(COMID, Variable) %>% 
-  summarise(MeanVals = mean(Value), VarVals = var(Value)) %>% ## calculations
-  mutate(VarVals = ifelse(is.na(VarVals), MeanVals, VarVals)) 
-## variance not always calculated - when only 1 comid, in those cases, take mean
+  summarise(Vals = median(Value)) #%>% ## median values
 
-## make wider rename with mean/var in name
-## means
-tass_sp_means <- RemSense_long %>%
-  mutate(VarNames = paste0(Variable, "_Var"), Variable = paste0(Variable, "_Mean")) %>%
-  pivot_wider(id_cols = "COMID", names_from = Variable, values_from = MeanVals) 
+# sum(is.na(RemSense_longMed))
+# ind1 <- which(is.na(RemSense_longMed))
+# RemSense_longMed[ind1,]
 
 ## variance
-tass_sp_vars <- RemSense_long %>%
-  mutate(VarNames = paste0(Variable, "_Var"), Variable = paste0(Variable, "_Mean")) %>%
-  pivot_wider(id_cols = "COMID", names_from = VarNames, values_from = VarVals) 
+RemSense_longVar <- envPred %>%
+  dplyr::select(COMID, ends_with("Var")) %>%
+  pivot_longer(c(TC_092014_RB9.1_Var:TC_092014_RB9.3_Var, TC_042014_RB9.1_Var:TC_042014_RB9.3_Var), names_to = "Variable", values_to = "Value") %>%
+  group_by(COMID, Variable) %>% 
+  mutate(Vals = var(Value)) %>% ## variance values
+  mutate(Vals = ifelse(is.na(Vals), Value, Vals)) %>%
+  dplyr::select(COMID, Variable, Vals) %>%
+  distinct()
+## variance not always calculated - when only 1 comid, in those cases, take original value
+
+# sum(is.na(RemSense_longVar)) ## 6 missing comids
+# ind <- which(is.na(RemSense_longVar))
+# che <- RemSense_longVar[ind,]
 
 ## join together
 
-tass_all <- full_join(tass_sp_vars, tass_sp_means, by = "COMID" )
+tass_all <- bind_rows(RemSense_longMed, RemSense_longVar)
 
-head(tass_all)  
+## make wider rename with mean/var in name
+## means
+# tass_sp_means <- RemSense_long %>%
+#   mutate(VarNames = paste0(Variable, "_Var"), Variable = paste0(Variable, "_Mean")) %>%
+#   pivot_wider(id_cols = "COMID", names_from = Variable, values_from = MeanVals) 
+# 
+# ## variance
+# tass_sp_vars <- RemSense_long %>%
+#   mutate(VarNames = paste0(Variable, "_Var"), Variable = paste0(Variable, "_Mean")) %>%
+#   pivot_wider(id_cols = "COMID", names_from = VarNames, values_from = VarVals) 
+
+## join together
+
+# tass_all <- full_join(tass_sp_vars, tass_sp_means, by = "COMID" )
+# 
+head(tass_all)
+
+tass_all <- tass_all %>% 
+  pivot_wider(names_from = Variable, values_from = Vals)
 
 save(tass_all, file="ignore/03_remote_sensing_data_per_comid.RData")
 
@@ -72,8 +99,8 @@ save(tass_all, file="ignore/03_remote_sensing_data_per_comid.RData")
 names(envPred)
 ## scale to nhd reach 
 data_hyd_sf_long <- envPred %>%
-  dplyr::select(-c(TC_092014_RB9.1:TC_042014_RB9.3, x,y,ID,  DS_Mag_50:Wet_BFL_Mag_50)) %>%
-  pivot_longer(c(MRVBF.Mx:tmin_mon), names_to = "Variable", values_to = "Value") %>%
+  dplyr::select(-c(TC_092014_RB9.1_Med:TC_042014_RB9.3_Var,  DS_Mag_50:Wet_BFL_Mag_50)) %>%
+  pivot_longer(c(MRVBF.Mx:tminMonX12), names_to = "Variable", values_to = "Value") %>%
   group_by(COMID, Variable) %>%
   summarise(Meanvals = mean(Value),
          Minvals = min(Value),
@@ -98,20 +125,20 @@ str(data_hyd_sf_longer)
 meanVars <- data_hyd_sf_longer %>%
   ungroup() %>%
   filter(Stat == "Meanvals") %>%
-  dplyr::select(c(COMID,ppt_ann:tmin_mon)) %>%
+  dplyr::select(c(COMID,ppt_ann:pptMonX9)) %>%
   distinct()
 
 
 MinVars <- data_hyd_sf_longer %>%
   ungroup() %>%
   filter(Stat == "Minvals") %>%
-  dplyr::select(c(COMID, DEM_10m.Mn, VRM1.Mn:VRM9.Mn))  %>%
+  dplyr::select(c(COMID, DEM_10m.Mn, VRM1.Mn:VRM9.Mn, tmin_ann:tminMonX9))  %>%
   distinct()
 
 MaxVars <- data_hyd_sf_longer %>%
   ungroup() %>%
   filter(Stat == "Maxvals") %>%
-  dplyr::select(c(COMID, Catchment.A, MRVBF.Mx))  %>%
+  dplyr::select(c(COMID, Catchment.A, MRVBF.Mx, tmax_ann:tmaxMonX9))  %>%
   distinct()
 
 ## join dfs
@@ -122,7 +149,7 @@ all_data <- bind_cols(meanVars, MinVars[,-1], MaxVars[-1])
 names(envPred) 
 
 hydro <- envPred %>%
-  dplyr::select(COMID:Wet_BFL_Mag_50) %>%
+  dplyr::select(COMID, DS_Mag_50:Wet_BFL_Mag_50) %>%
   distinct(COMID, .keep_all = T)
 
 head(hydro)
@@ -134,6 +161,8 @@ allData <- full_join(hyd_tass, all_data, by = "COMID")
 
 head(allData)
 names(allData)
+
+# allData <- distinct(allData)
 
 ## save out
 
@@ -148,18 +177,18 @@ unique(bioMod$LifeStage)
 ## make sure if reach has at least one presence then keeps it, if none then absence
 bio_coms <- bioMod %>%
   as.data.frame() %>%
-  group_by(COMID2) %>% 
+  group_by(COMID) %>% 
   summarise(PresAbs = max(PresAbs)) %>%
-  rename(COMID = COMID2) %>%
-  drop_na() #%>%
-  # mutate(LifeStage = "ALL")
+  # rename(COMID = COMID2) %>%
+  drop_na() 
+
 
 head(bio_coms)
-dim(bio_coms) ## 287
+dim(bio_coms) ## 318
 
 ## how many presense/absences
-sum(bio_coms$PresAbs ==1) ## 176
-sum(bio_coms$PresAbs ==0) ## 111
+sum(bio_coms$PresAbs ==1) ## 235
+sum(bio_coms$PresAbs ==0) ## 83
 
 head(allData)
 ## join with env data
