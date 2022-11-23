@@ -17,7 +17,7 @@ library(mapview)
 ## upload model and prediction gridded data
 
 load(file =  "ignore/03_RB9_grdded_data.RData") # for predictions
-load(file =  "ignore/03_RB9_grdded_data_observations.RData") # form model build
+load(file =  "ignore/03_RB9_grdded_data_observations.RData") # for model build
 
 head(data_hyd_sf_obs)
 head(data_hyd_sf)
@@ -125,7 +125,7 @@ str(data_hyd_sf_longer)
 meanVars <- data_hyd_sf_longer %>%
   ungroup() %>%
   filter(Stat == "Meanvals") %>%
-  dplyr::select(c(COMID,ppt_ann:pptMonX9)) %>%
+  dplyr::select(c(COMID, ppt_ann:pptMonX9, AvgClay:AvgWaterSt)) %>%
   distinct()
 
 
@@ -166,7 +166,7 @@ names(allData)
 
 ## save out
 
-save(allData, file = "ignore/03_all_env_data_NHD_COMID.RData")
+save(allData, file = "ignore/04_all_env_data_NHD_COMID.RData")
 
 # Join presence/absence to env data (COMID) ------------------------------
 
@@ -200,7 +200,7 @@ NewDataObsComid$PresAbs[is.na(NewDataObsComid$PresAbs)] <- -999
 
 
 ## saveout
-save(NewDataObsComid, file = "ignore/03_all_env_bio_data_NHD_COMID.RData")
+save(NewDataObsComid, file = "ignore/04_all_env_bio_data_NHD_COMID.RData")
 
 
 # plot comids -------------------------------------------------------------

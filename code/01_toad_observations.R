@@ -13,7 +13,7 @@ library(mapview)
 library(RStoolbox)
 
 
-setwd("/Users/katieirving/Documents/Documents - Katie’s MacBook Pro/git/Arroyo_toad_RB9_V2")
+# setwd("/Users/katieirving/Documents/Documents - Katie’s MacBook Pro/git/Arroyo_toad_RB9_V2")
 getwd()
 
 
@@ -320,17 +320,18 @@ bio <- bio_data2 %>%
   rename(Latitude = StartLat, Longitude = StartLong) %>%
   pivot_longer(BUMIcount, names_to = "LifeStage", values_to = "Count") %>%
   mutate(PresAbs = ifelse(Count < 1, 0, 1), Year = paste0("20", Year)) %>%
-  filter(Year >= 2000) %>%
+  # filter(Year >= 2000) %>%
   distinct()
 
 head(bio)
 unique(bio2$LifeStage)
 
+
 ## other
 bio1 <- bio_data3 %>%
   dplyr::select(COMID, Latitude, Longitude, ID, Year) %>%
   mutate(LifeStage = "ALL", PresAbs = 1) %>%
-  filter(Year >= 2000) %>%
+  # filter(Year >= 2000) %>%
   distinct()
 
 ## Chad
@@ -338,7 +339,7 @@ bio2 <- bio_data4 %>%
   dplyr::select(COMID, Latitude, Longitude, ID, Age, Year) %>%
   rename(LifeStage = Age) %>%
   mutate(PresAbs = 1, Year = as.character(Year)) %>%
-  filter(Year >= 2000) %>%
+  # filter(Year >= 2000) %>%
   distinct()
 
 bio3 <- bio_data0 %>%
@@ -355,6 +356,8 @@ dim(bio_points) ## 5130 - unique points
 length(unique(bio_points$COMID)) ## 534 - unique comid
 # subs <- bio_points %>% filter(Year >= 2000) 
 # length(unique(subs$COMID)) ## 485 2000-2014
+unique(bio_points$Year)
+
 
 ## map points
 

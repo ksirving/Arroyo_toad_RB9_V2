@@ -21,7 +21,6 @@ library(rgeos)
 
 # testing data ------------------------------------------------------------
 
-\
 ## upload nhd points
 # nhdPts <- st_read("/Users/katieirving/SCCWRP/SD Hydro Vulnerability Assessment - General/Data/SpatialData/NHD_reaches_RB9_points/NHD_reaches_RB9_points.shp")
 # nhdPts
@@ -76,7 +75,7 @@ load(file="ignore/00_raw_new_data_raster_df_coms.RData")
 head(DataComs)
 
 load(file = "ignore/02_all_data_for_model_gridded.RData") ## data only at pres/abs
-head(NewDataObsSub)
+# head(NewDataObsSub)
 
 # Upload and match FFM---------------------------------------------------------------
 
@@ -87,41 +86,41 @@ comids <- unique(delta$comid)
 
 length(unique(delta$comid)) ## 2117
 ## compare ffm comids with raster data
-Rtest <- DataComs %>%
-  filter(COMID %in% comids)
-
-length(unique(Rtest$COMID)) ## 2048
-
-## which are missing?
-
-Missing <- DataComs %>%
-  filter(!COMID %in% comids)
-
-miscoms <- unique(Missing$COMID)
-
-## save list of missing comids
-write.csv(miscoms, "output_data/03_missing_comids.csv")
-miscoms
-plot(Missing)
-
-## nhd lines
-
-## upload nhd shape
-nhd <- st_read("/Users/katieirving/SCCWRP/SD Hydro Vulnerability Assessment - General/Data/SpatialData/NHD_reaches_RB9_castreamclassification.shp")
-## simplify
-nhd <- nhd %>%
-  st_as_sf %>%
-  st_simplify(dTolerance = 0.5, preserveTopology = T)
-
-
-## get line string of missing coms
-
-nhdMissing <- nhd %>%
-  filter(COMID %in% miscoms)
-
-nhdMissing
-## save for Abel
-st_write(nhdMissing, "output_data/03_missing_coms_multiline.shp", append = F)
+# Rtest <- DataComs %>%
+#   filter(COMID %in% comids)
+# 
+# length(unique(Rtest$COMID)) ## 2048
+# 
+# ## which are missing?
+# 
+# Missing <- DataComs %>%
+#   filter(!COMID %in% comids)
+# 
+# miscoms <- unique(Missing$COMID)
+# 
+# ## save list of missing comids
+# write.csv(miscoms, "output_data/02_missing_comids.csv")
+# miscoms
+# plot(Missing)
+# 
+# ## nhd lines
+# 
+# ## upload nhd shape
+# nhd <- st_read("/Users/katieirving/SCCWRP/SD Hydro Vulnerability Assessment - General/Data/SpatialData/NHD_reaches_RB9_castreamclassification.shp")
+# ## simplify
+# nhd <- nhd %>%
+#   st_as_sf %>%
+#   st_simplify(dTolerance = 0.5, preserveTopology = T)
+# 
+# 
+# ## get line string of missing coms
+# 
+# nhdMissing <- nhd %>%
+#   filter(COMID %in% miscoms)
+# 
+# nhdMissing
+# ## save for Abel
+# st_write(nhdMissing, "output_data/03_missing_coms_multiline.shp", append = F)
 
 # Format and join hydro ---------------------------------------------------
 
@@ -146,7 +145,7 @@ delta_long <- delta_long %>%
 ## values are median, reformat wide
 delta_med <- delta_long %>%
   group_by(comid, FlowMetric, hydro.endpoint) %>%
-  summarise(MedDelta = MetricValue) %>%
+  summarise(MedDelta = DeltaH) %>%
   ungroup() %>%
   rename(COMID = comid) %>%
   dplyr::select(-FlowMetric)  %>%
@@ -165,8 +164,8 @@ dim(data_hyd_sf) ## 15531
 
 save(data_hyd_sf, file = "ignore/03_RB9_grdded_data.RData")
 # load(file = "ignore/03_all_env_data_gridded_comid.RData")
-
-## join with all data by comid - observations
+# 
+# ## join with all data by comid - observations
 data_hyd_sf_obs <- inner_join(NewDataObsSub, delta_med, by = "COMID") ## 209 reaches don't match
 
 length(unique(NewDataObsSub$COMID)) ## 322

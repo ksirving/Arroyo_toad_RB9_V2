@@ -69,11 +69,11 @@ crs(rmaskOld)
 ## prep data for snap
 
 ## make a raster mask to snap points to
-xvars1 <- xvars[[1]]
-crs(xvars1) <- "+proj=utm +zone=11 +datum=NAD83"
-crs(xvars1)
-## save out
-writeRaster(xvars1, "ignore/02_mask_raster_network_new.tif", format="GTiff", overwrite=T)
+# xvars1 <- xvars[[1]]
+# crs(xvars1) <- "+proj=utm +zone=11 +datum=NAD83"
+# crs(xvars1)
+# ## save out
+# writeRaster(xvars1, "ignore/02_mask_raster_network_new.tif", format="GTiff", overwrite=T)
 
 # snapped in in GIS by Abel, snapped to 50m 
 

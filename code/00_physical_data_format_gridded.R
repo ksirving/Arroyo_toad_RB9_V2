@@ -367,13 +367,13 @@ nhd <- nhd %>%
 crs(nhd) 
 
 ## convert to points
-nhdPoints <- st_cast(nhd, "LINESTRING")
+nhdPoints <- st_cast(nhd, "POINT")
 nhdPoints 
 
-test <- nhdPoints %>%
-  filter(COMID %in% c(22549169, 20348307))
+# test <- nhdPoints %>%
+#   filter(COMID %in% c(22549169, 20348307))
 
-plot(test)
+# plot(test)
 
 # set background basemaps:
 basemapsList <- c("Esri.WorldTopoMap", "Esri.WorldImagery",
@@ -392,21 +392,50 @@ m1
 
 ## upload raster stack made above
 
-x <- terra::rast("ignore/00_raw_new_data_raster.tif")
+x <- stack("ignore/00_raw_new_data_raster.tif")
 crs(x) <- crs(rmask)
+
+## load names
+load( file = "output_data/00_raster_layer_names.RData")
 
 ## extract raster values at points
 rasterAtPts <- raster::extract(x, nhdPoints, cellnumbers=TRUE)
-# rasterAtPts <- na.omit(rasterAtPts)
-rasterAtPts
-## join together
+rasterAtPts <- na.omit(rasterAtPts)
+# names(rasterAtPts) <- layerNames
+# rasterAtPts
+# names(rasterAtPts)
+## get coords
 
-DataComs <- as.data.frame(cbind(nhdPoints, rasterAtPts) %>% drop_na(MRVBF.Mx)) %>% dplyr::select(-geometry)#%>% distinct(cells, .keep_all=T)
-DataComs <- DataComs %>% distinct()
+coords <- as.data.frame(cbind(nhdPoints, rasterAtPts)) %>% 
+  mutate(Longitude = unlist(map(geometry,1)),
+         Latitude = unlist(map(geometry,2))) %>%
+  dplyr::select(cells, Longitude, Latitude) %>%
+  distinct(cells, .keep_all=T)
+
+head(coords)
+dim(coords)
+
+rownames(coords) <- seq(1, nrow(coords), 1)
+
+length(unique(coords$cells))
+## join with points and remove duplicates
+
+DataComs <- as.data.frame(cbind(nhdPoints, rasterAtPts)) %>% dplyr::select(-geometry) %>% distinct()
+head(DataComs)
+
+layerNames
+names(DataComs)[7:70] <- layerNames
+
+## join with coordinates by cell number
+DataComs <- DataComs %>% 
+  drop_na(MRVBF.Mx) %>%
+  inner_join(coords, by = "cells") 
+  
+head(DataComs)
 
 length(unique(DataComs$COMID)) ## 2107
 
-names()
+names(DataComs)
 
 ## save out
 
