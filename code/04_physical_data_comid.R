@@ -17,23 +17,23 @@ library(mapview)
 ## upload model and prediction gridded data
 
 load(file =  "ignore/03_RB9_grdded_data.RData") # for predictions
-load(file =  "ignore/03_RB9_grdded_data_observations.RData") # for model build
+# load(file =  "ignore/03_RB9_grdded_data_observations.RData") # for model build
 
 head(data_hyd_sf_obs)
 head(data_hyd_sf)
 
 # 22549169, 20348307 have same coord and data values but different hydro value
 
-names(data_hyd_sf_obs)
-## separate to bio and env
-
-bioMod <- data_hyd_sf_obs %>%
-  as.data.frame() %>%
-  dplyr::select(COMID, ID, Year:PresAbs) ## 
-  
-envMod <- data_hyd_sf_obs %>%
-  as.data.frame() %>% 
-  dplyr::select(COMID, ID.1, MRVBF.Mx:TC_042014_RB9.3_Var, DS_Mag_50:Wet_BFL_Mag_50) 
+# names(data_hyd_sf_obs)
+# ## separate to bio and env
+# 
+# bioMod <- data_hyd_sf_obs %>%
+#   as.data.frame() %>%
+#   dplyr::select(COMID, ID, Year:PresAbs) ## 
+#   
+# envMod <- data_hyd_sf_obs %>%
+#   as.data.frame() %>% 
+#   dplyr::select(COMID, ID.1, MRVBF.Mx:TC_042014_RB9.3_Var, DS_Mag_50:Wet_BFL_Mag_50) 
 
 envPred <- data_hyd_sf %>% as.data.frame() 
 
@@ -169,38 +169,40 @@ names(allData)
 save(allData, file = "ignore/04_all_env_data_NHD_COMID.RData")
 
 # Join presence/absence to env data (COMID) ------------------------------
-
-names(bioMod)
-dim(bioMod)
-
-unique(bioMod$LifeStage)
-## make sure if reach has at least one presence then keeps it, if none then absence
-bio_coms <- bioMod %>%
-  as.data.frame() %>%
-  group_by(COMID) %>% 
-  summarise(PresAbs = max(PresAbs)) %>%
-  # rename(COMID = COMID2) %>%
-  drop_na() 
+# do this in model script!!!!!!
 
 
-head(bio_coms)
-dim(bio_coms) ## 318
-
-## how many presense/absences
-sum(bio_coms$PresAbs ==1) ## 235
-sum(bio_coms$PresAbs ==0) ## 83
-
-head(allData)
-## join with env data
-NewDataObsComid <- full_join(allData, bio_coms, by = "COMID")
-
-## replace NAs in presabs with -999
-
-NewDataObsComid$PresAbs[is.na(NewDataObsComid$PresAbs)] <- -999
-
-
-## saveout
-save(NewDataObsComid, file = "ignore/04_all_env_bio_data_NHD_COMID.RData")
+# names(bioMod)
+# dim(bioMod)
+# 
+# unique(bioMod$LifeStage)
+# ## make sure if reach has at least one presence then keeps it, if none then absence
+# bio_coms <- bioMod %>%
+#   as.data.frame() %>%
+#   group_by(COMID) %>% 
+#   summarise(PresAbs = max(PresAbs)) %>%
+#   # rename(COMID = COMID2) %>%
+#   drop_na() 
+# 
+# 
+# head(bio_coms)
+# dim(bio_coms) ## 318
+# 
+# ## how many presense/absences
+# sum(bio_coms$PresAbs ==1) ## 235
+# sum(bio_coms$PresAbs ==0) ## 83
+# 
+# head(allData)
+# ## join with env data
+# NewDataObsComid <- full_join(allData, bio_coms, by = "COMID")
+# 
+# ## replace NAs in presabs with -999
+# 
+# NewDataObsComid$PresAbs[is.na(NewDataObsComid$PresAbs)] <- -999
+# 
+# 
+# ## saveout
+# save(NewDataObsComid, file = "ignore/04_all_env_bio_data_NHD_COMID.RData")
 
 
 # plot comids -------------------------------------------------------------

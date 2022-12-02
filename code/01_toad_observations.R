@@ -382,4 +382,4 @@ m1@map %>% leaflet::addMeasure(primaryLengthUnit = "meters")
 ## save out
 
 st_write(bio_points, "ignore/01_toad_obs_points_RB9.shp", append=FALSE)
-
+bio_points <- st_read("ignore/01_toad_obs_points_RB9.shp")

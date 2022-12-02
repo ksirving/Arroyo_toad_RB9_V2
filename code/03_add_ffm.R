@@ -74,12 +74,12 @@ Etest <- nhdPts %>%
 load(file="ignore/00_raw_new_data_raster_df_coms.RData")
 head(DataComs)
 
-load(file = "ignore/02_all_data_for_model_gridded.RData") ## data only at pres/abs
+# load(file = "ignore/02_all_data_for_model_gridded.RData") ## data only at pres/abs
 # head(NewDataObsSub)
 
 # Upload and match FFM---------------------------------------------------------------
 
-delta <- read.csv("/Users/katieirving/OneDrive - SCCWRP/Documents - Katie’s MacBook Pro/git/Arroyo_toad_RB9_V2/ignore/2022-07-28_predicted_abs_FFM_deltaFFM_SD_COMIDS_medianDelta_test5_norunoff.csv")
+delta <- read.csv("/Users/katieirving/Library/CloudStorage/OneDrive-SharedLibraries-SCCWRP/SD Hydro Vulnerability Assessment - General/Data/RawData/Data_for_SDSU/R/data/Output_09/2022-11-29_predicted_abs_FFMq99_deltaFFMq99_SD_COMIDS_medianDelta_test2q99_test12FFM_allgages.csv")
 head(delta)
 
 comids <- unique(delta$comid)
@@ -145,7 +145,7 @@ delta_long <- delta_long %>%
 ## values are median, reformat wide
 delta_med <- delta_long %>%
   group_by(comid, FlowMetric, hydro.endpoint) %>%
-  summarise(MedDelta = DeltaH) %>%
+  summarise(MedDelta = MetricValue) %>%
   ungroup() %>%
   rename(COMID = comid) %>%
   dplyr::select(-FlowMetric)  %>%
@@ -177,6 +177,10 @@ head(data_hyd_sf_obs)
 ## save out
 save(data_hyd_sf_obs, file = "ignore/03_RB9_grdded_data_observations.RData")
 
+test <- data_hyd_sf_obs %>%
+  distinct(ID, .keep_all =T)
+
+length(unique(test$COMID))
 
 # Plot comids -------------------------------------------------------------
 

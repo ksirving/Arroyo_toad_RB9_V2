@@ -239,9 +239,9 @@ projection(climStack) <- "+proj=geocent +ellps=GRS80 +units=m +no_defs"
 clim_Origx <- cbind(data_red, raster::extract(climStack, orig_grids))
 dim(clim_Origx)
 names(clim_Origx)[18:56]
-
+head(clim_Origx)
 ## interpolate the NA values
-
+?na.approx
 clim_Origx[18:56] <- na.approx(clim_Origx[18:56])
 ## 226 missing values changed
 
@@ -320,6 +320,7 @@ head(tass_sp)
 data_sf <- na.omit(tass_sp) %>%
   dplyr::select(ID.2, X, Y, MRVBF.Mx:TC_042014_RB9.3_Var) #%>%
 names(data_sf)
+sum(is.na(data_sf))
 ## make spatial and transformCRS
 coordinates(data_sf) <- ~X+Y
 
@@ -358,7 +359,7 @@ writeRaster(x, "ignore/00_raw_new_data_raster.tif", format="GTiff", crs="+proj=g
 # Add COMIDs - with nhd shapefile -----------------------------------------
 
 ## upload nhd shape
-nhd <- st_read("/Users/katieirving/SCCWRP/SD Hydro Vulnerability Assessment - General/Data/SpatialData/NHD_reaches_RB9_castreamclassification.shp")
+nhd <- st_read("/Users/katieirving/Library/CloudStorage/OneDrive-SharedLibraries-SCCWRP/SD Hydro Vulnerability Assessment - General/Data/SpatialData/NHD_reaches_RB9_castreamclassification.shp")
 ## simplify
 nhd <- nhd %>%
   st_as_sf %>%
@@ -394,13 +395,14 @@ m1
 
 x <- stack("ignore/00_raw_new_data_raster.tif")
 crs(x) <- crs(rmask)
-
+x
 ## load names
 load( file = "output_data/00_raster_layer_names.RData")
 
 ## extract raster values at points
 rasterAtPts <- raster::extract(x, nhdPoints, cellnumbers=TRUE)
-rasterAtPts <- na.omit(rasterAtPts)
+# rasterAtPts <- na.omit(rasterAtPts)
+rasterAtPts
 # names(rasterAtPts) <- layerNames
 # rasterAtPts
 # names(rasterAtPts)
@@ -426,21 +428,160 @@ head(DataComs)
 layerNames
 names(DataComs)[7:70] <- layerNames
 
-## join with coordinates by cell number
-DataComs <- DataComs %>% 
-  drop_na(MRVBF.Mx) %>%
+## get ionly variables and fill NAs
+NaApp <- DataComs %>% 
+  group_by(COMID) %>%
+  dplyr::select(layerNames) %>%
+  na.approx() ## this is a quick fix until new data available - some reaches have NAs for all points in reach (all comid)
+
+## get site info
+SiteInfo <-  DataComs %>%
+  dplyr::select(CLASS, REACHCODE:cells)
+
+## join back together with site info and coords by cell number
+DataComsx <- cbind(SiteInfo, NaApp) %>%
   inner_join(coords, by = "cells") 
   
-head(DataComs)
+head(DataComsx)
 
-length(unique(DataComs$COMID)) ## 2107
+## make spatial and change crs to get data_sf coords
+
+DataComsx <- DataComsx %>%
+  st_as_sf(coords=c("Longitude", "Latitude"), crs=crs(nhdPoints), remove=F) %>%
+  st_transform(crs=crs(x)) %>% as.data.frame() %>%
+  mutate(X = unlist(map(geometry,1)),
+         Y = unlist(map(geometry,2))) 
+  
+
+head(data_sf)
+length(unique(DataComsx$COMID)) ## 2179
 
 names(DataComs)
+sum(is.na(DataComsx))
+
+## add in coords from data_sf
+
+# ## upload data
+# load(file = "ignore/00_tass_cap_climate_original_data.RData")
+# head(tass_sp)
+# 
+# ## format shape file
+# data_sf <- na.omit(tass_sp) %>%
+#   dplyr::select(ID.2, X, Y, MRVBF.Mx:TC_042014_RB9.3_Var) #%>%
+# names(data_sf)
+# 
+# DataComs <- cbind(data_sf$X, data_sf$Y, DataComs)
 
 ## save out
 
-save(DataComs, file = "ignore/00_raw_new_data_raster_df_coms.RData")
+save(DataComsx, file = "ignore/00_raw_new_data_raster_df_coms.RData")
 
+# Format and join hydro ---------------------------------------------------
+
+delta <- read.csv("/Users/katieirving/Library/CloudStorage/OneDrive-SharedLibraries-SCCWRP/SD Hydro Vulnerability Assessment - General/Data/RawData/Data_for_SDSU/R/data/Output_09/2022-11-29_predicted_abs_FFMq99_deltaFFMq99_SD_COMIDS_medianDelta_test2q99_test12FFM_allgages.csv")
+head(delta)
+
+## change names of columns
+delta_long <- delta %>% 
+  rename(FlowMetric = metric, MetricValue = abs_FFM_median_cfs, DeltaH = delta_FFM_median_cfs) %>%
+  filter(!is.na(FlowMetric)) %>%
+  distinct()
+
+unique(delta_long$FlowMetric)
+
+## change names of metrics
+delta_long <- delta_long %>%
+  # filter(FlowMetric %in% c("fa_mag", "wet_bfl_mag_10", "ds_mag_90", "ds_mag_50")) %>%
+  mutate(hydro.endpoint = case_when(FlowMetric == "ds_mag_50" ~ "DS_Mag_50",
+                                    FlowMetric == "q99" ~ "Q99",
+                                    FlowMetric == "ds_mag_90" ~ "DS_Mag_90",
+                                    FlowMetric == "fa_mag" ~ "FA_Mag",
+                                    FlowMetric == "peak_10" ~ "Peak_10",
+                                    FlowMetric == "peak_2" ~ "Peak_2",
+                                    FlowMetric == "peak_5" ~ "Peak_5",
+                                    FlowMetric == "sp_mag" ~ "SP_Mag",
+                                    FlowMetric == "wet_bfl_mag_10" ~ "Wet_BFL_Mag_10",
+                                    FlowMetric == "wet_bfl_mag_50" ~ "Wet_BFL_Mag_50")) 
+
+## values are median, reformat wide
+delta_med <- delta_long %>%
+  group_by(comid, FlowMetric, hydro.endpoint) %>%
+  summarise(MedDelta = MetricValue) %>%
+  ungroup() %>%
+  rename(COMID = comid) %>%
+  dplyr::select(-FlowMetric)  %>%
+  pivot_wider(names_from = hydro.endpoint, values_from = MedDelta) %>% dplyr::select(COMID:Wet_BFL_Mag_50)
+
+## join with all data by comid - all RB9
+data_hyd_sf <- inner_join(DataComsx, delta_med, by = "COMID") ## 209 reaches don't match
+
+length(unique(DataComsx$COMID)) ## 2179
+length(unique(delta_med$COMID)) ## 2116
+length(unique(data_hyd_sf$COMID)) ## 2116
+
+head(data_hyd_sf)
+dim(data_hyd_sf) ## 16891
+## save out
+
+save(data_hyd_sf, file = "ignore/00_RB9_grdded_data.RData")
+# load(file = "ignore/03_all_env_data_gridded_comid.RData")
+# 
+# ## join with all data by comid - observations
+# data_hyd_sf_obs <- inner_join(NewDataObsSub, delta_med, by = "COMID") ## 209 reaches don't match
+# 
+# length(unique(NewDataObsSub$COMID)) ## 322
+# length(unique(delta_med$COMID)) ## 2117
+# length(unique(data_hyd_sf_obs$COMID)) ## 318
+# 
+# head(data_hyd_sf_obs)
+# 
+# ## save out
+# save(data_hyd_sf_obs, file = "ignore/03_RB9_grdded_data_observations.RData")
+# 
+# test <- data_hyd_sf_obs %>%
+#   distinct(ID, .keep_all =T)
+# 
+# length(unique(test$COMID))
+
+
+# Make raster of all data & hydro -----------------------------------------
+
+## make spatial and transformCRS
+coordinates(data_hyd_sf) <- ~X+Y
+data_hyd_sf
+projection(data_hyd_sf) <- "+proj=geocent +ellps=GRS80 +units=m +no_defs"
+
+# data_hyd_sf <- spTransform(data_hyd_sf, CRS("+proj=geocent +ellps=GRS80 +units=m +no_defs")) 
+
+## create template raster
+
+## dims etc from CurrentGridFeb14.grd
+
+x <- raster(ncol=701, nrow=649, xmn=423638.013766974, xmx=563838.013766974, ymn=3600402.14370233 , ymx=3730202.14370233)
+
+projection(x) <- "+proj=geocent +ellps=GRS80 +units=m +no_defs"
+crs(x)
+
+#Create list of column names you want to rasterize
+fields <- names(data_hyd_sf) [c(7:70, 76:85)]
+fields
+
+## make rasters of each env var
+for (i in fields){
+  x[[i]]<-raster::rasterize(data_hyd_sf, x, field=i, na.rm =TRUE, sp = TRUE)
+  projection(x)<-"+proj=geocent +ellps=GRS80 +units=m +no_defs"
+  x <- stack(x)
+}
+
+x@layers ## check
+## define and save layer names
+layerNames <- names(x)
+save(layerNames, file = "output_data/00_final_raster_layer_names.RData")
+
+# plot(x[[1]]) ## to check
+
+## save out
+writeRaster(x, "ignore/00_raw_final_data_raster.tif", format="GTiff", crs="+proj=geocent +ellps=GRS80 +units=m +no_defs", overwrite=TRUE)
 
 
 # Add Comids - not working properly   --------------------------------------------------
