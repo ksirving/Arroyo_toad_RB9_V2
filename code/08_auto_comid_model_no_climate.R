@@ -83,8 +83,8 @@ m=1
 
 for(m in models) {
   
-  # gridFile <- paste0("ignore/ModelResults/Gridded/", models[m],"/")
-  COMIDFile <- paste0("ignore/ModelResults/COMID/", models[m],"/")
+  # gridFile <- paste0("ignore/ModelResults/Gridded/", m,"/")
+  COMIDFile <- paste0("ignore/ModelResults/COMID/", m,"/")
 
 # KDE Bias Surface --------------------------------------------------------
 
@@ -257,7 +257,7 @@ save(rf.data, file=paste0(COMIDFile, "data_for_rf_model.RData"))
 (rf.final <- randomForest(y=rf.data[,1], x=rf.data[,2:ncol(rf.data)], ntree=b, mtry = 18,nodesize=5,
                           importance=TRUE, norm.votes=TRUE, proximity=TRUE) )
 
-
+save(rf.final, file=paste0(COMIDFile, "rf_model.RData"))
 
 # Proximity ------------------------------------------------------------------
 

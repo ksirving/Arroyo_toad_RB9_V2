@@ -13,6 +13,7 @@ library(tidyverse)
 library(mapview)
 library(caret)
 library(rpart)
+library(tidylog)
 
 
 # upload data -------------------------------------------------------------
@@ -110,7 +111,7 @@ for(m in models) {
 ### summarise probability over models
 probsx_mean <- probsx %>%
  group_by(cells, COMID, Latitude, Longitude, X, Y) %>%
-  summarise(MeanProb = mean(probOcc))
+  summarise(MeanProb = mean(na.omit(probOcc)))
 
 head(probsx_mean)
 
@@ -119,65 +120,72 @@ write.csv(probsx_mean, "ignore/ModelResults/Gridded/09_Av_Probs_Current_RB9.csv"
 
 # Plotting probability of occurrence --------------------------------------
 
-head(nhd)
-crs(nhd)
-
 names(probsx_mean)
+sum(is.na(probsx_mean$Latitude))
+ind <- which(is.na(probsx_mean$Latitude))
+probsx_mean[ind,] ### fix these nas, might be the same issue as above, remove for now
+probsx_mean <- na.omit(probsx_mean)
 
-## get obs and format
+## make probabilities spatial
+
+probs_sf <- probsx_mean %>%
+  st_as_sf(coords=c("Longitude", "Latitude"), crs=crs(nhd), remove=F) 
+
+## save out
+st_write(probs_sf, "ignore/ModelResults/Gridded/09_Av_Probs_Current_RB9.shp")
+
+## make raster of probs
+
+## make spatial and transformCRS
+coordinates(probsx_mean) <- ~X+Y
+projection(probsx_mean) <- "+proj=geocent +ellps=GRS80 +units=m +no_defs"
+
+## create template raster
+
+## dims etc from CurrentGridFeb14.grd
+
+x <- raster(ncol=701, nrow=649, xmn=423638.013766974, xmx=563838.013766974, ymn=3600402.14370233 , ymx=3730202.14370233)
+
+projection(x) <- "+proj=geocent +ellps=GRS80 +units=m +no_defs"
+crs(x)
+
+## make rasters of probability
+
+  x<-raster::rasterize(probsx_mean, x, field="MeanProb", na.rm =TRUE, sp = TRUE)
+  projection(x)<-"+proj=geocent +ellps=GRS80 +units=m +no_defs"
+
+  ## save
+writeRaster(x, "ignore/ModelResults/Gridded/09_mean_probs_RB9.tif", format="GTiff", crs="+proj=geocent +ellps=GRS80 +units=m +no_defs", overwrite=TRUE)
+  
+## get obs and format. makespatial 
 obs <- NewDataObsSub %>% as.data.frame() %>%
-  dplyr::select(PresAbs, cells, COMID)
+  dplyr::select(PresAbs, cells, COMID) %>%
+  inner_join(probs_sf, by = c("cells", "COMID")) %>%
+  st_as_sf(coords=c("Longitude", "Latitude"), crs=crs(nhd), remove=F) 
 
-obs
-
-nhd_lines_rb9 <- nhd %>%
-  dplyr::select(Shape_Leng, COMID) %>%
-  filter(COMID %in% pred_df$COMID) %>%
-  mutate(COMID = as.integer(COMID))
-
-head(nhd_lines_prob)
-dim(nhd_lines_rb9)
-str(nhd_lines_rb9)
-
-nhd_lines_prob <- full_join(nhd_lines_rb9, pred_df, by = "COMID")
-nhd_lines_prob <- st_zm(nhd_lines_prob)
-
-# plot(nhd_lines_prob[5])
-
-### round prob values - change later
-nhd_lines_prob <- nhd_lines_prob %>%
-  rename(probOcc = 3) %>%
-  mutate(probRound = round(probOcc, digits=1))
-
-## join in obs
-
-nhd_lines_obs <- right_join(nhd_lines_rb9, obs, by = "COMID")
-nhd_lines_obs <- st_zm(nhd_lines_obs) %>% mutate(nhd_lines_obs, NewObs = as.factor(NewObs)) %>%
-  drop_na(Shape_Leng) %>% st_centroid()
-
-nhd_lines_obs
-nhd_lines_prob
-
+## map
 library(viridis)
+
+probs_sf
 
 my_breaks <- c(0, 0.25, 0.5, 0.75, 1)
 
 map1 <- ggplot() +
-  geom_sf(data = nhd_lines_prob, aes(color = probOcc)) + 
+  geom_sf(data = probs_sf, aes(color = MeanProb)) + 
   scale_colour_gradientn(colours=inferno(6), name="Probability of Occurrence",
                          labels = my_breaks) +
-  geom_sf(data = subset(nhd_lines_obs, NewObs == 1), shape = 1, size = 2) 
+  geom_sf(data = subset(obs, PresAbs == 1), shape = 1, size = 2) 
 
 
 map1
 
-file.name1 <- "/Users/katieirving/Documents/Documents - Katie’s MacBook Pro/git/Arroyo_toad_RB9_V2/Figures/01_full_model_prob_occs_map_no_clim.jpg"
+file.name1 <- "ignore/ModelResults/Gridded/09_prob_occs_map_gridded.jpg"
 ggsave(map1, filename=file.name1, dpi=300, height=5, width=8)
 
 library(mapview)
 library(sf)
 library(RColorBrewer)
-webshot::install_phantomjs()
+# webshot::install_phantomjs()
 
 ## map
 # set background basemaps:
@@ -189,13 +197,11 @@ basemapsList <- c("Esri.WorldTopoMap", "Esri.WorldImagery",
 mapviewOptions(basemaps=basemapsList, vector.palette = colorRampPalette(c(  "red", "green")) , fgb = FALSE)
 
 
-m1 <- mapview(nhd_lines_prob, zcol = "probOcc",  legend = TRUE, layer.name = "Probability of Occurrence") +
-  mapview(subset(nhd_lines_obs, NewObs == 1), col.regions = "black",cex = 2, layer.name = "Observations")
+m1 <- mapview(probs_sf, zcol = "MeanProb",  legend = TRUE, layer.name = "Probability of Occurrence") +
+  mapview(subset(obs, PresAbs == 1), col.regions = "black",cex = 2, layer.name = "Observations")
 
 m1@map %>% leaflet::addMeasure(primaryLengthUnit = "meters")
 
-mapshot(m1, url = paste0(getwd(), "/ignore/map_no_clim_gridded.html"),
-        file = paste0(getwd(), "/ignore/map_no_clim_gridded.png"))
+mapshot(m1, url = paste0(getwd(), "/ignore/ModelResults/Gridded/map_no_clim_gridded.html"),
+        file = paste0(getwd(), "/ignore/ModelResults/Gridded/map_no_clim_gridded.png"))
 getwd()
-
-

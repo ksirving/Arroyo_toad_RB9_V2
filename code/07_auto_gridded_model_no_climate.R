@@ -45,6 +45,7 @@ head(allData)
 
 ## gridded env df with comids
 load(file = "ignore/00_RB9_grdded_data.RData") 
+data_hyd_sf <- data_hyd_sf %>% dplyr::select(- DS_Mag_90)
 head(data_hyd_sf)
 
 ## read in env data stack
@@ -84,8 +85,8 @@ m=2
 
 for(m in models) {
    
-  gridFile <- paste0("ignore/ModelResults/Gridded/", models[m],"/")
-  # COMIDFile <- paste0("ignore/ModelResults/COMID/", models[m],"/")
+  gridFile <- paste0("ignore/ModelResults/Gridded/", m,"/")
+  # COMIDFile <- paste0("ignore/ModelResults/COMID/", m,"/")
 
 
 # KDE Bias Surface --------------------------------------------------------

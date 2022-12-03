@@ -475,10 +475,11 @@ sum(is.na(DataComsx))
 ## save out
 
 save(DataComsx, file = "ignore/00_raw_new_data_raster_df_coms.RData")
+load(file = "ignore/00_raw_new_data_raster_df_coms.RData")
 
 # Format and join hydro ---------------------------------------------------
 
-delta <- read.csv("/Users/katieirving/Library/CloudStorage/OneDrive-SharedLibraries-SCCWRP/SD Hydro Vulnerability Assessment - General/Data/RawData/Data_for_SDSU/R/data/Output_09/2022-11-29_predicted_abs_FFMq99_deltaFFMq99_SD_COMIDS_medianDelta_test2q99_test12FFM_allgages.csv")
+delta <- read.csv("/Users/katieirving/Library/CloudStorage/OneDrive-SharedLibraries-SCCWRP/SD Hydro Vulnerability Assessment - General/Data/RawData/Data_for_SDSU/R/data/output_12/Relative_Alteration_bins_deltaFFMtest12_deltaQ99test2.csv")
 head(delta)
 
 ## change names of columns
@@ -487,11 +488,11 @@ delta_long <- delta %>%
   filter(!is.na(FlowMetric)) %>%
   distinct()
 
-unique(delta_long$FlowMetric)
+unique(delta_long$hydro.endpoint)
 
 ## change names of metrics
 delta_long <- delta_long %>%
-  # filter(FlowMetric %in% c("fa_mag", "wet_bfl_mag_10", "ds_mag_90", "ds_mag_50")) %>%
+  filter(!FlowMetric %in% c( "ds_mag_90")) %>%
   mutate(hydro.endpoint = case_when(FlowMetric == "ds_mag_50" ~ "DS_Mag_50",
                                     FlowMetric == "q99" ~ "Q99",
                                     FlowMetric == "ds_mag_90" ~ "DS_Mag_90",
@@ -505,12 +506,20 @@ delta_long <- delta_long %>%
 
 ## values are median, reformat wide
 delta_med <- delta_long %>%
-  group_by(comid, FlowMetric, hydro.endpoint) %>%
+  dplyr::select(-FlowMetric, ref.ffm:Relative_Alteration)  %>%
+  group_by(comid,hydro.endpoint) %>%
   summarise(MedDelta = MetricValue) %>%
   ungroup() %>%
   rename(COMID = comid) %>%
-  dplyr::select(-FlowMetric)  %>%
   pivot_wider(names_from = hydro.endpoint, values_from = MedDelta) %>% dplyr::select(COMID:Wet_BFL_Mag_50)
+delta_med
+
+## binned ffm
+delta_bin <- delta_long %>%
+  rename(COMID = comid) %>%
+  dplyr::select(COMID, hydro.endpoint, Relative_Alteration)  %>%
+  mutate(Relative_Alteration = as.factor(Relative_Alteration)) %>%
+  pivot_wider(names_from = hydro.endpoint, values_from =Relative_Alteration)# %>% dplyr::select(COMID, DS_Mag_50, FA_Mag:Wet_BFL_Mag_50)
 
 ## join with all data by comid - all RB9
 data_hyd_sf <- inner_join(DataComsx, delta_med, by = "COMID") ## 209 reaches don't match
@@ -519,29 +528,11 @@ length(unique(DataComsx$COMID)) ## 2179
 length(unique(delta_med$COMID)) ## 2116
 length(unique(data_hyd_sf$COMID)) ## 2116
 
-head(data_hyd_sf)
+names(data_hyd_sf)
 dim(data_hyd_sf) ## 16891
 ## save out
 
 save(data_hyd_sf, file = "ignore/00_RB9_grdded_data.RData")
-# load(file = "ignore/03_all_env_data_gridded_comid.RData")
-# 
-# ## join with all data by comid - observations
-# data_hyd_sf_obs <- inner_join(NewDataObsSub, delta_med, by = "COMID") ## 209 reaches don't match
-# 
-# length(unique(NewDataObsSub$COMID)) ## 322
-# length(unique(delta_med$COMID)) ## 2117
-# length(unique(data_hyd_sf_obs$COMID)) ## 318
-# 
-# head(data_hyd_sf_obs)
-# 
-# ## save out
-# save(data_hyd_sf_obs, file = "ignore/03_RB9_grdded_data_observations.RData")
-# 
-# test <- data_hyd_sf_obs %>%
-#   distinct(ID, .keep_all =T)
-# 
-# length(unique(test$COMID))
 
 
 # Make raster of all data & hydro -----------------------------------------
@@ -582,6 +573,65 @@ save(layerNames, file = "output_data/00_final_raster_layer_names.RData")
 
 ## save out
 writeRaster(x, "ignore/00_raw_final_data_raster.tif", format="GTiff", crs="+proj=geocent +ellps=GRS80 +units=m +no_defs", overwrite=TRUE)
+
+
+# Binned data -------------------------------------------------------------
+
+
+## join with all data by comid - all RB9 - binned data
+data_hyd_sf <- inner_join(DataComsx, delta_bin, by = "COMID") ## 209 reaches don't match
+
+length(unique(DataComsx$COMID)) ## 2179
+length(unique(delta_med$COMID)) ## 2116
+length(unique(data_hyd_sf$COMID)) ## 2116
+names(data_hyd_sf)
+head(data_hyd_sf)
+dim(data_hyd_sf) ## 16891
+str(data_hyd_sf)
+## save out
+
+save(data_hyd_sf, file = "ignore/00_RB9_grdded_data_binned.RData")
+# load(file = "ignore/00_RB9_grdded_data_binned.RData")
+# load(file = "ignore/03_all_env_data_gridded_comid.RData")
+
+# ## make spatial and transformCRS
+coordinates(data_hyd_sf) <- ~X+Y
+data_hyd_sf
+projection(data_hyd_sf) <- "+proj=geocent +ellps=GRS80 +units=m +no_defs"
+
+# data_hyd_sf <- spTransform(data_hyd_sf, CRS("+proj=geocent +ellps=GRS80 +units=m +no_defs"))
+
+## create template raster
+
+## dims etc from CurrentGridFeb14.grd
+
+x <- raster(ncol=701, nrow=649, xmn=423638.013766974, xmx=563838.013766974, ymn=3600402.14370233 , ymx=3730202.14370233)
+
+projection(x) <- "+proj=geocent +ellps=GRS80 +units=m +no_defs"
+crs(x)
+
+#Create list of column names you want to rasterize
+fields <- names(data_hyd_sf) [c(7:70, 74:82)]
+fields
+i
+
+## make rasters of each env var
+for (i in fields){
+  x[[i]]<-raster::rasterize(data_hyd_sf, x, field=i, na.rm =TRUE, sp = TRUE)
+  projection(x)<-"+proj=geocent +ellps=GRS80 +units=m +no_defs"
+  x <- stack(x)
+}
+
+x@layers ## check
+## define and save layer names
+layerNames <- names(x)
+save(layerNames, file = "output_data/00_final_raster_layer_names_binned.RData")
+
+# plot(x[[1]]) ## to check
+
+## save out
+writeRaster(x, "ignore/00_raw_final_data_raster_binned.tif", format="GTiff", crs="+proj=geocent +ellps=GRS80 +units=m +no_defs", overwrite=TRUE)
+# 
 
 
 # Add Comids - not working properly   --------------------------------------------------
